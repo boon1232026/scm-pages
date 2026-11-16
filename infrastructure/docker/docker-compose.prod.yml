@@ -1,0 +1,98 @@
+# Production stack for Social Commerce Manager.
+# This host runs Docker with "bridge": "none" (iptables disabled), so every
+# service uses network_mode: host — the same pattern as the existing
+# health-screening deployment. Ports are unique to SCM and bound to loopback
+# where the process supports it; UFW (22/80/443 only) is the outer guard.
+name: scm
+
+services:
+  postgres:
+    image: postgres:16-alpine
+    network_mode: host
+    environment:
+      POSTGRES_USER: scm
+      POSTGRES_PASSWORD: ${SCM_DB_PASSWORD:?set in .env}
+      POSTGRES_DB: scm
+      PGPORT: "15433"
+    command: ["postgres", "-c", "listen_addresses=127.0.0.1", "-c", "port=15433"]
+    volumes: [pgdata:/var/lib/postgresql/data]
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -h 127.0.0.1 -p 15433 -U scm -d scm"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+    restart: unless-stopped
+    mem_limit: 512m
+
+  redis:
+    image: redis:7-alpine
+    network_mode: host
+    command: ["redis-server", "--bind", "127.0.0.1", "--port", "16379"]
+    healthcheck:
+      test: ["CMD", "redis-cli", "-p", "16379", "ping"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+    restart: unless-stopped
+    mem_limit: 128m
+
+  # MinIO images went private in late 2025; s3rver (same engine we run in
+  # local dev) serves the S3 API here. The API creates the bucket itself via
+  # ensureBucket(). Upgrade path: real S3 / Cloudflare R2.
+  s3:
+    image: node:22-alpine
+    network_mode: host
+    command: ["npx", "-y", "s3rver@3", "-a", "127.0.0.1", "-p", "19000", "-d", "/data", "--no-vhost-buckets", "--allow-mismatched-signatures"]
+    volumes: [s3data:/data]
+    healthcheck:
+      test: ["CMD-SHELL", "nc -z 127.0.0.1 19000"]
+      interval: 5s
+      timeout: 3s
+      retries: 20
+    restart: unless-stopped
+
+  api:
+    build:
+      context: ../..
+      dockerfile: infrastructure/docker/Dockerfile
+      network: host
+    network_mode: host
+    command: ["node", "apps/api/dist/main.js"]
+    env_file: .env
+    depends_on:
+      postgres: { condition: service_healthy }
+      redis: { condition: service_healthy }
+      s3: { condition: service_healthy }
+    restart: unless-stopped
+    mem_limit: 512m
+
+  worker:
+    build:
+      context: ../..
+      dockerfile: infrastructure/docker/Dockerfile
+      network: host
+    network_mode: host
+    command: ["node", "apps/worker/dist/main.js"]
+    env_file: .env
+    depends_on:
+      postgres: { condition: service_healthy }
+      redis: { condition: service_healthy }
+      s3: { condition: service_healthy }
+    restart: unless-stopped
+    mem_limit: 768m
+
+  migrate:
+    build:
+      context: ../..
+      dockerfile: infrastructure/docker/Dockerfile
+      network: host
+    network_mode: host
+    command: ["pnpm", "--filter", "@scm/api", "exec", "prisma", "migrate", "deploy"]
+    env_file: .env
+    depends_on:
+      postgres: { condition: service_healthy }
+    restart: "no"
+
+volumes:
+  pgdata:
+  s3data:

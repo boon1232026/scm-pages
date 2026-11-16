@@ -1,4 +1,5 @@
-import { useRef, useState } from "react";
+import { useEffect, useRef, useState } from "react";
+import type { Post } from "@scm/contracts";
 import { api } from "../lib/api";
 import { Err, fmtDate, StatusBadge, useQuery } from "../lib/hooks";
 
@@ -14,7 +15,7 @@ export default function Compose() {
   const [useFirstComment, setUseFirstComment] = useState(false);
   const [commentDelay, setCommentDelay] = useState(30);
   const [draftComments, setDraftComments] = useState<{ body: string; mediaId: string | null }[]>([]);
-  const [result, setResult] = useState<string | null>(null);
+  const [trackPost, setTrackPost] = useState<Post | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
   const [uploading, setUploading] = useState<"post" | number | null>(null);
@@ -65,7 +66,7 @@ export default function Compose() {
   async function publish() {
     setBusy(true);
     setError(null);
-    setResult(null);
+    setTrackPost(null);
     try {
       const post = await api.createPost({
         kind,
@@ -87,7 +88,7 @@ export default function Compose() {
         timezone: "Asia/Bangkok",
         idempotencyKey: crypto.randomUUID(),
       });
-      setResult(`Post ${post.id.slice(0, 8)}… → ${post.pages.map((p) => `${p.pageName}: ${p.status}`).join(", ")}`);
+      setTrackPost(post);
       setBody("");
       setMediaIds([]);
       setDraftComments([]);
@@ -115,7 +116,39 @@ export default function Compose() {
     <>
       <h2>Compose</h2>
       <Err msg={error} />
-      {result && <div className="info-box">{result}</div>}
+      {trackPost &&
+        (() => {
+          const done = trackPost.pages.every((pg) => ["published", "failed", "skipped", "cancelled"].includes(pg.status));
+          const fails = trackPost.pages.filter((pg) => pg.status === "failed");
+          const cls = !done ? "is-run" : fails.length ? "is-fail" : "is-ok";
+          const title = !done
+            ? "กำลังส่งไปยัง Facebook…"
+            : fails.length === 0
+              ? "โพสต์สำเร็จแล้ว!"
+              : fails.length === trackPost.pages.length
+                ? "ส่งไม่สำเร็จ — ทุกเพจล้มเหลว"
+                : "สำเร็จบางเพจ — มีเพจที่ล้มเหลว";
+          return (
+            <div className={`publish-result ${cls}`}>
+              <div className="pr-title">{title}</div>
+              {trackPost.pages.map((pg) => (
+                <div key={pg.socialPageId} className="pr-row">
+                  <span className="pr-page">{pg.pageName}</span>
+                  <StatusBadge status={pg.status} />
+                  <span className="muted mono pr-msg">
+                    {pg.fbPostId ??
+                      (pg.lastError ? (typeof pg.lastError === "string" ? pg.lastError : JSON.stringify(pg.lastError)) : "")}
+                  </span>
+                </div>
+              ))}
+              {done && fails.length === 0 && trackPost.firstComments.length > 0 && (
+                <div className="pr-note">
+                  คอมเมนต์ {trackPost.firstComments.length} อันกำลังตามมาทีละอันตาม delay {trackPost.commentDelaySec ?? 0} วินาที — ดูผลได้ที่ History
+                </div>
+              )}
+            </div>
+          );
+        })()}
 
       <div className="compose-grid">
         {/* ---------- left: the form ---------- */}

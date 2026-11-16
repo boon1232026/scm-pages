@@ -9,6 +9,19 @@ export default function History() {
   const notifications = useQuery(() => api.listNotifications(), []);
   const mediaById = new Map((media.data?.items ?? []).map((m) => [m.id, m]));
   const [open, setOpen] = useState<string | null>(null);
+  const [fStatus, setFStatus] = useState("all");
+  const [fFrom, setFFrom] = useState("");
+  const [fTo, setFTo] = useState("");
+  const [fText, setFText] = useState("");
+
+  const items = (posts.data?.items ?? []).filter((p) => {
+    if (fStatus !== "all" && p.status !== fStatus) return false;
+    const day = (p.publishedAt ?? p.scheduledAt ?? p.createdAt).slice(0, 10);
+    if (fFrom && day < fFrom) return false;
+    if (fTo && day > fTo) return false;
+    if (fText && !p.body.toLowerCase().includes(fText.toLowerCase())) return false;
+    return true;
+  });
 
   return (
     <>
@@ -16,12 +29,31 @@ export default function History() {
       <Err msg={posts.error} />
       <div className="card">
         <h3>Posts</h3>
+        <div className="filter-bar">
+          <select value={fStatus} onChange={(e) => setFStatus(e.target.value)}>
+            <option value="all">ทุกสถานะ</option>
+            <option value="published">published</option>
+            <option value="partial">partial</option>
+            <option value="failed">failed</option>
+            <option value="queued">queued</option>
+            <option value="cancelled">cancelled</option>
+          </select>
+          <input type="date" value={fFrom} onChange={(e) => setFFrom(e.target.value)} title="จากวันที่" />
+          <span className="muted">–</span>
+          <input type="date" value={fTo} onChange={(e) => setFTo(e.target.value)} title="ถึงวันที่" />
+          <input type="search" placeholder="ค้นหาข้อความโพสต์…" value={fText} onChange={(e) => setFText(e.target.value)} style={{ flex: 1, minWidth: 140 }} />
+          {(fStatus !== "all" || fFrom || fTo || fText) && (
+            <button className="link" onClick={() => { setFStatus("all"); setFFrom(""); setFTo(""); setFText(""); }}>ล้าง</button>
+          )}
+        </div>
         {posts.loading ? (
           <p className="muted">Loading…</p>
         ) : !posts.data?.items.length ? (
           <p className="muted">No posts yet.</p>
+        ) : !items.length ? (
+          <p className="muted">ไม่มีรายการที่ตรงตัวกรอง</p>
         ) : (
-          posts.data.items.map((p) => {
+          items.map((p) => {
             const expanded = open === p.id;
             const postComments = (comments.data?.items ?? []).filter((c) =>
               p.pages.some((pg) => pg.fbPostId && c.fbTargetId === pg.fbPostId)

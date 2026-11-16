@@ -43,6 +43,7 @@ export default function Pages() {
                   <td>
                     <label className="switch">
                       <input type="checkbox" checked={p.isEnabled} onChange={(e) => toggle(p.id, e.target.checked)} />
+                      <span className="sw-track" />
                     </label>
                   </td>
                 </tr>

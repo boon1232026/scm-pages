@@ -13,22 +13,28 @@ import type { Env } from "../config/env";
 @Injectable()
 export class S3Service {
   readonly client: S3Client;
+  private readonly signClient: S3Client;
   readonly bucket: string;
   private readonly publicUrl?: string;
 
   constructor(config: ConfigService<Env, true>) {
     this.bucket = config.get("S3_BUCKET");
     this.publicUrl = config.get("S3_PUBLIC_URL");
-    this.client = new S3Client({
-      endpoint: config.get("S3_ENDPOINT"),
+    const creds = {
+      accessKeyId: config.get("S3_ACCESS_KEY"),
+      secretAccessKey: config.get("S3_SECRET_KEY"),
+    };
+    const base = {
       region: config.get("S3_REGION"),
-      credentials: {
-        accessKeyId: config.get("S3_ACCESS_KEY"),
-        secretAccessKey: config.get("S3_SECRET_KEY"),
-      },
-      requestChecksumCalculation: "WHEN_REQUIRED",
+      credentials: creds,
+      requestChecksumCalculation: "WHEN_REQUIRED" as const,
       forcePathStyle: config.get("S3_FORCE_PATH_STYLE"),
-    });
+    };
+    this.client = new S3Client({ ...base, endpoint: config.get("S3_ENDPOINT") });
+    // Presigned PUT URLs are handed to the desktop client, which can only reach
+    // the public endpoint (behind Caddy), not the internal loopback address.
+    const publicEndpoint = this.publicUrl ? new URL(this.publicUrl).origin : config.get("S3_ENDPOINT");
+    this.signClient = new S3Client({ ...base, endpoint: publicEndpoint });
   }
 
   async ensureBucket(): Promise<void> {
@@ -41,7 +47,7 @@ export class S3Service {
 
   presignPut(key: string, mimeType: string, ttlSeconds = 900) {
     return getSignedUrl(
-      this.client,
+      this.signClient,
       new PutObjectCommand({ Bucket: this.bucket, Key: key, ContentType: mimeType }),
       { expiresIn: ttlSeconds },
     );
