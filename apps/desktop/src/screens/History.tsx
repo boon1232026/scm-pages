@@ -149,6 +149,7 @@ export default function History() {
       <div className="card">
         <h3>Posts</h3>
         <div className="filter-bar">
+          <span className="filter-label">⚲ กรอง</span>
           <select value={fStatus} onChange={(e) => setFStatus(e.target.value)}>
             <option value="all">ทุกสถานะ</option>
             <option value="published">published</option>

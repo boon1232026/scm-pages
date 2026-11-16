@@ -231,12 +231,18 @@ button.ghost { background: transparent; border: 1px solid var(--border, #2a3346)
 .pr-note { margin-top: 8px; font-size: 13px; opacity: .9; }
 
 /* history filter bar */
-.filter-bar { display: flex; align-items: center; gap: 10px; margin-bottom: 12px; padding-bottom: 12px; border-bottom: 1px solid var(--border, #2a3346); }
-.filter-bar select, .filter-bar input { padding: 6px 10px; font-size: 13px; width: auto; }
-.filter-bar select { min-width: 130px; }
-.filter-bar input[type="date"] { width: 145px; color-scheme: dark; }
-.filter-bar input[type="search"] { flex: 1; min-width: 120px; }
-.filter-bar .muted { flex-shrink: 0; }
+.filter-bar { display: flex; align-items: center; gap: 10px; margin-bottom: 14px; padding-bottom: 14px; border-bottom: 1px solid var(--border, #2a3346); flex-wrap: wrap; }
+.filter-bar .filter-label { display: inline-flex; align-items: center; gap: 6px; font-size: 12px; color: var(--muted); flex-shrink: 0; }
+.filter-bar select, .filter-bar input {
+  background: #141b2e; border: 1px solid var(--border); border-radius: 9px;
+  padding: 8px 12px; font-size: 13px; color: var(--text); height: 36px; width: auto;
+  transition: border-color .15s;
+}
+.filter-bar select:focus, .filter-bar input:focus { border-color: var(--accent); outline: none; }
+.filter-bar select { min-width: 150px; cursor: pointer; }
+.filter-bar input[type="date"] { width: 150px; color-scheme: dark; }
+.filter-bar input[type="search"] { flex: 1; min-width: 160px; }
+.filter-bar .filter-sep { color: var(--muted); flex-shrink: 0; }
 .filter-bar .link { flex-shrink: 0; }
 
 /* ---- dashboard ---- */
