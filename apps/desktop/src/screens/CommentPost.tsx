@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from "react";
 import { Link } from "react-router-dom";
-import type { FbFeedPost, FbPostPhoto, MediaAsset } from "@scm/contracts";
+import type { Comment, FbFeedPost, FbPostPhoto, MediaAsset } from "@scm/contracts";
 import { api } from "../lib/api";
 import { Err, fmtDate, StatusBadge, useQuery } from "../lib/hooks";
 
@@ -36,6 +36,7 @@ export default function CommentPost() {
   const [post, setPost] = useState<FbFeedPost | null>(null);
   const [photos, setPhotos] = useState<FbPostPhoto[] | null>(null);
   const [photosLoading, setPhotosLoading] = useState(false);
+  const [sent, setSent] = useState<Comment[]>([]);
 
   const [rows, setRows] = useState<Record<string, Row>>({});
   const [delay, setDelay] = useState(30);
@@ -76,12 +77,27 @@ export default function CommentPost() {
     }
   }
 
+  async function loadSent(fbPostId: string) {
+    try {
+      const items: Comment[] = [];
+      let cursor: string | null = null;
+      for (let i = 0; i < 10; i++) {
+        const page = await api.listComments(cursor ? { cursor } : undefined);
+        items.push(...page.items);
+        cursor = page.nextCursor;
+        if (!cursor) break;
+      }
+      setSent(items.filter((c) => c.fbPostId === fbPostId && c.socialPageId === pageId));
+    } catch { /* sent list is informational only */ }
+  }
+
   function selectPage(id: string) {
     setPageId(id);
     setFeed([]);
     setFeedCursor(null);
     setPost(null);
     setPhotos(null);
+    setSent([]);
     setRows({});
     setCreated(null);
     setError(null);
@@ -103,12 +119,14 @@ export default function CommentPost() {
     setPost(p);
     setPhotos(null);
     setRows({});
+    setSent([]);
     setCreated(null);
     setError(null);
     setPhotosLoading(true);
     try {
       const res = await api.postPhotos(pageId, p.id);
       setPhotos(res.photos);
+      void loadSent(p.id);
     } catch (e) {
       setError(e instanceof Error ? e.message : String(e));
       setPhotos([]);
@@ -186,6 +204,7 @@ export default function CommentPost() {
       });
       setCreated(res.created);
       setRows({});
+      if (post) void loadSent(post.id);
     } catch (e) {
       setError(e instanceof Error ? e.message : String(e));
     } finally {
@@ -344,6 +363,25 @@ export default function CommentPost() {
                         </button>
                         {r.uploadError && <span className="muted" style={{ color: "#f87171" }}>{r.uploadError}</span>}
                       </div>
+                      {(() => {
+                        const target = key === POST_ROW ? post.id : key;
+                        const sentHere = sent.filter((c) => c.fbTargetId === target);
+                        return sentHere.length ? (
+                          <div className="sent-strip">
+                            <span className="muted">ส่งไปแล้ว {sentHere.length}:</span>
+                            {sentHere.map((c) => {
+                              const cm = c.mediaId ? byId.get(c.mediaId) : null;
+                              return (
+                                <span key={c.id} className="sent-chip" title={(c.body ?? "").slice(0, 200) || undefined}>
+                                  {cm && <img src={cm.thumbnailUrl ?? cm.url} alt="" />}
+                                  {!cm && <span className="sent-text">{(c.body ?? "").slice(0, 24) || "comment"}</span>}
+                                  <StatusBadge status={c.status} />
+                                </span>
+                              );
+                            })}
+                          </div>
+                        ) : null;
+                      })()}
                     </label>
                   </div>
                 );
