@@ -29,27 +29,32 @@ export default function Pages() {
             No pages yet — connect a Facebook account first (Facebook Accounts → Connect), then sync.
           </p>
         ) : (
-          <table>
-            <thead>
-              <tr><th>Page</th><th>FB Page ID</th><th>Token</th><th>Token expires</th><th>Enabled</th></tr>
-            </thead>
-            <tbody>
-              {pages.data.map((p) => (
-                <tr key={p.id}>
-                  <td>{p.name}</td>
-                  <td className="mono muted">{p.pageId}</td>
-                  <td><StatusBadge status={p.tokenStatus} /></td>
-                  <td className="muted">{fmtDate(p.tokenExpiresAt)}</td>
-                  <td>
-                    <label className="switch">
-                      <input type="checkbox" checked={p.isEnabled} onChange={(e) => toggle(p.id, e.target.checked)} />
-                      <span className="sw-track" />
-                    </label>
-                  </td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
+          <div className="page-list">
+            {pages.data.map((p) => (
+              <div key={p.id} className={`hrow ${p.isEnabled ? "" : "off"}`}>
+                {p.avatarUrl ? (
+                  <img className="hrow-thumb" src={p.avatarUrl} alt="" />
+                ) : (
+                  <div className="hrow-thumb hrow-thumb-ph">{p.name.slice(0, 1)}</div>
+                )}
+                <div className="hrow-body">
+                  <div className="hrow-title">{p.name}</div>
+                  <div className="hrow-meta">
+                    <span className="mono">ID: {p.pageId}</span>
+                    <StatusBadge status={p.tokenStatus} />
+                    {p.tokenExpiresAt && <span>token หมด {fmtDate(p.tokenExpiresAt)}</span>}
+                    {p.followersCount != null && <span>ผู้ติดตาม {p.followersCount.toLocaleString()}</span>}
+                  </div>
+                </div>
+                <div className="hrow-side">
+                  <label className="switch">
+                    <input type="checkbox" checked={p.isEnabled} onChange={(e) => toggle(p.id, e.target.checked)} />
+                    <span className="sw-track" />
+                  </label>
+                </div>
+              </div>
+            ))}
+          </div>
         )}
       </div>
     </>
