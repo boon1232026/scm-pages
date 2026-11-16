@@ -137,9 +137,9 @@ export default function Compose() {
       const d = productDetails[id];
       return n + (d ? Math.max(d.mediaIds.length, d.body.trim() ? 1 : 0) : 0);
     }, 0);
-    const space = 20 - details - draftComments.filter((c) => c.body.trim() || c.mediaId || c.uploadState).length;
+    const space = 80 - details - draftComments.filter((c) => c.body.trim() || c.mediaId || c.uploadState).length;
     if (files.length > space) {
-      setError(`เพิ่มได้อีก ${Math.max(space, 0)} คอมเมนต์ (สูงสุด 20 รายการต่อโพสต์)`);
+      setError(`เพิ่มได้อีก ${Math.max(space, 0)} คอมเมนต์ (สูงสุด 80 รายการต่อโพสต์)`);
       return;
     }
     const rows = files.map((f) => ({ ...newComment(mediaIds.length === 1 ? mediaIds[0]! : null), fileName: f.name, uploadState: "uploading" as const }));
@@ -223,7 +223,7 @@ export default function Compose() {
     (kind === "text" ? !!body.trim() : mediaIds.length > 0) &&
     !batchActive && uploading === null && !pendingMedia &&
     !draftComments.some((c) => c.uploadState) &&
-    commentCount <= 20 &&
+    commentCount <= 80 &&
     (!useFirstComment || commentCount > 0);
 
   const summary = [
@@ -448,7 +448,7 @@ export default function Compose() {
                 <span className="sw-track" />
                 คอมเมนต์ใต้โพสต์
               </label>
-              <span className="hint">optional — 1 comment = 1 image · รวมไม่เกิน 20</span>
+              <span className="hint">optional — 1 comment = 1 image · รวมไม่เกิน 80</span>
               {useFirstComment && (
                 <label className="delay-input">
                   delay
@@ -564,7 +564,7 @@ export default function Compose() {
                     </div>
                   );
                 })}
-                <button className="link" disabled={commentCount >= 20} onClick={() => setDraftComments((cur) => [...cur, newComment(mediaIds.length === 1 ? mediaIds[0]! : null)])}>
+                <button className="link" disabled={commentCount >= 80} onClick={() => setDraftComments((cur) => [...cur, newComment(mediaIds.length === 1 ? mediaIds[0]! : null)])}>
                   + เพิ่มคอมเมนต์อีก
                 </button>
                 {pendingMedia && <p className="muted">รอประมวลผลรูปให้พร้อมก่อนเผยแพร่ หากรูปขึ้น failed ให้ลบแล้วอัปโหลดใหม่</p>}
@@ -585,8 +585,8 @@ export default function Compose() {
                       ? "กำลังอัปโหลดรูป…"
                       : draftComments.some((c) => c.uploadState === "failed")
                         ? "มีรูปคอมเมนต์อัปโหลดไม่สำเร็จ — ลบหรือเลือกใหม่"
-                        : commentCount > 20
-                          ? `คอมเมนต์เกิน 20 รายการ (ตอนนี้ ${commentCount})`
+                        : commentCount > 80
+                          ? `คอมเมนต์เกิน 80 รายการ (ตอนนี้ ${commentCount})`
                           : "Publishes immediately"}
               </div>
             </div>

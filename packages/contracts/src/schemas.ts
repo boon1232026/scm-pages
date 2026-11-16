@@ -197,7 +197,7 @@ export const createPostSchema = z
           })
           .refine((v) => v.body || v.mediaId, { message: "each comment requires body or mediaId" }),
       )
-      .max(20)
+      .max(80)
       .optional(),
     pageOverrides: z.record(uuid, z.string().max(63206)).optional(),
     commentDelaySeconds: z.number().int().min(0).max(86400).optional(),
