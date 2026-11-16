@@ -295,10 +295,16 @@ export default function Compose() {
             ) : (
               <div className="page-grid">
                 {pages.data.map((p) => (
-                  <label key={p.id} className={`page-chip ${selected.has(p.id) ? "on" : ""}`}>
-                    <input type="checkbox" checked={selected.has(p.id)} onChange={() => setSelected((s) => toggle(s, p.id))} />
-                    {p.name} <StatusBadge status={p.tokenStatus} />
-                  </label>
+                  <button key={p.id} type="button" className={`page-pick ${selected.has(p.id) ? "on" : ""}`} onClick={() => setSelected((s) => toggle(s, p.id))}>
+                    {p.avatarUrl ? (
+                      <img src={p.avatarUrl} alt="" />
+                    ) : (
+                      <span className="page-pick-ph">{p.name.slice(0, 1)}</span>
+                    )}
+                    <span className="page-pick-name">{p.name}</span>
+                    <StatusBadge status={p.tokenStatus} />
+                    {selected.has(p.id) && <span className="page-pick-check">✓</span>}
+                  </button>
                 ))}
               </div>
             )}
