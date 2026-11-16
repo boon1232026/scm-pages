@@ -38,4 +38,9 @@ jobs:
           VITE_API_BASE_URL: ${{ vars.API_BASE_URL || 'https://scm-api.167-71-220-250.sslip.io' }}
         with:
           projectPath: apps/desktop
-          tagName: ${{ github.ref_name }}
+      - name: Upload installer artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: SocialCommerceManager-Setup
+          path: apps/desktop/src-tauri/target/release/bundle/nsis/*.exe
+          if-no-files-found: error
