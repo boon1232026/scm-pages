@@ -74,8 +74,26 @@ Note: `@db.Citext` replaced by app-level email lowercasing (embedded Postgres la
 Local S3 note: MinIO binaries deprecated (410) → dev uses `npx s3rver` with creds
 `S3RVER/S3RVER` (documented in `.env.example`); docker/minio remains the prod path.
 
-## Phase 5 — Desktop Application: ⬜ next
-## Phase 6–7: ⬜
+## Phase 5 — Desktop Application: 🚧 core screens live
+
+| Item | Status | Evidence |
+|---|---|---|
+| Session: persisted tokens, auto-refresh on 401, workspace switcher | ✅ | `src/lib/api.ts` (localStorage dev; Tauri keychain = hardening task) |
+| Auth gate → Login/Register screen | ✅ | real register/login via SDK |
+| Pages: list, enable toggle, sync, token-expiry display | ✅ | `/pages` |
+| Accounts: list, connect (real Meta OAuth URL), resync, disconnect | ✅ | `/accounts` |
+| Multi-Post: page multi-select, kind text/photo/multi_photo, media picker, schedule | ✅ | `/multi-post` → real `POST /posts` |
+| Comments: compose + history + retry/cancel | ✅ | `/comments` |
+| Product Library: real upload (presign→PUT→complete), status badges, search | ✅ | `/library` |
+| Templates / Configurations / Scheduler / History / Settings | ✅ | all wired to live endpoints |
+| Dashboard: health + post-status stats + upcoming jobs | ✅ | `/` |
+| Campaign Manager | ⚠️ placeholder — no API module yet | honest placeholder, no mock claims |
+| Desktop typecheck + vite build | ✅ | green; `@scm/ui` tsconfig added (removed `|| exit 0` hack) |
+
+## Phase 6–7: ⬜ remaining
+- Isolated worker-processor unit tests, queue jobId unit test
+- Tauri build on Windows runner → NSIS `SocialCommerceManager-Setup.exe` + clean-install test
+- Tauri secure token storage, cloud HTTPS deployment, campaign module (optional scope)
 
 ## Blockers / user actions
 

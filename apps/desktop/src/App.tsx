@@ -1,5 +1,18 @@
+import { useSyncExternalStore } from "react";
 import { NavLink, Route, Routes } from "react-router-dom";
+import { session } from "./lib/api";
 import Dashboard from "./screens/Dashboard";
+import Login from "./screens/Login";
+import Accounts from "./screens/Accounts";
+import Pages from "./screens/Pages";
+import MultiPost from "./screens/MultiPost";
+import Comments from "./screens/Comments";
+import Library from "./screens/Library";
+import Templates from "./screens/Templates";
+import Scheduler from "./screens/Scheduler";
+import History from "./screens/History";
+import Configuration from "./screens/Configuration";
+import Settings from "./screens/Settings";
 import ScreenPlaceholder from "./screens/ScreenPlaceholder";
 
 const NAV = [
@@ -17,7 +30,13 @@ const NAV = [
   { to: "/settings", icon: "⚙", label: "Settings" },
 ];
 
+function useAuthed() {
+  return useSyncExternalStore(session.subscribe, session.isAuthed);
+}
+
 export default function App() {
+  const authed = useAuthed();
+  if (!authed) return <Login />;
   return (
     <div className="app">
       <nav className="sidebar">
@@ -32,39 +51,19 @@ export default function App() {
       <main className="content">
         <Routes>
           <Route path="/" element={<Dashboard />} />
-          <Route path="/accounts" element={
-            <ScreenPlaceholder title="Facebook Accounts" phase={3}
-              description="Connect Facebook via Meta OAuth, view account status and reconnect expired tokens." />} />
-          <Route path="/pages" element={
-            <ScreenPlaceholder title="Page Management" phase={3}
-              description="Sync and enable Facebook Pages, check permissions and token health." />} />
-          <Route path="/multi-post" element={
-            <ScreenPlaceholder title="Multi-Post" phase={4}
-              description="Compose a post once and publish to multiple pages with per-page text overrides." />} />
-          <Route path="/comments" element={
-            <ScreenPlaceholder title="Comment Manager" phase={4}
-              description="Pick a target post and publish text or image comments." />} />
-          <Route path="/library" element={
-            <ScreenPlaceholder title="Product Library" phase={4}
-              description="Upload, categorize and search product media stored on S3." />} />
-          <Route path="/templates" element={
-            <ScreenPlaceholder title="Templates" phase={5}
-              description="Reusable post and comment templates for products." />} />
-          <Route path="/scheduler" element={
-            <ScreenPlaceholder title="Scheduler" phase={4}
-              description="Queue, reschedule and cancel scheduled posts and comments (Asia/Bangkok)." />} />
+          <Route path="/accounts" element={<Accounts />} />
+          <Route path="/pages" element={<Pages />} />
+          <Route path="/multi-post" element={<MultiPost />} />
+          <Route path="/comments" element={<Comments />} />
+          <Route path="/library" element={<Library />} />
+          <Route path="/templates" element={<Templates />} />
+          <Route path="/scheduler" element={<Scheduler />} />
           <Route path="/campaigns" element={
             <ScreenPlaceholder title="Campaign Manager" phase={5}
-              description="Named batches of posts across page sets with scheduling." />} />
-          <Route path="/history" element={
-            <ScreenPlaceholder title="History" phase={5}
-              description="Post/comment history, per-page statuses and activity logs." />} />
-          <Route path="/configuration" element={
-            <ScreenPlaceholder title="Configuration" phase={5}
-              description="Save and restore named composer configurations." />} />
-          <Route path="/settings" element={
-            <ScreenPlaceholder title="Settings" phase={2}
-              description="Profile, workspace, API endpoint and preferences." />} />
+              description="Campaign module is not implemented in the API yet — posts/comments/scheduling are live today." />} />
+          <Route path="/history" element={<History />} />
+          <Route path="/configuration" element={<Configuration />} />
+          <Route path="/settings" element={<Settings />} />
         </Routes>
       </main>
     </div>

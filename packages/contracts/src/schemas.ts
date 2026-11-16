@@ -291,6 +291,8 @@ export const scheduledJobSchema = z.object({
   kind: z.enum(["publish_post", "publish_comment", "token_refresh", "media_process"]),
   refId: uuid,
   runAt: isoDateTime,
+  timezone: z.string(),
+  queueJobId: z.string().nullable(),
   status: z.enum(["pending", "enqueued", "running", "done", "failed", "cancelled"]),
 });
 export type ScheduledJob = z.infer<typeof scheduledJobSchema>;
