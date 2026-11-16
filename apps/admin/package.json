@@ -1,0 +1,13 @@
+{
+  "name": "@scm/admin",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev": "echo \"admin app lands in a later phase\" && exit 0",
+    "build": "echo \"admin app lands in a later phase\" && exit 0",
+    "typecheck": "exit 0",
+    "test": "exit 0",
+    "lint": "exit 0"
+  }
+}

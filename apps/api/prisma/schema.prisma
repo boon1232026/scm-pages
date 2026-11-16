@@ -1,0 +1,628 @@
+// Social Commerce Manager — Prisma schema
+// Design doc: docs/database/DATABASE_SCHEMA.md
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+// ---------------- enums ----------------
+
+enum WorkspaceRole {
+  owner
+  admin
+  member
+  viewer
+}
+
+enum SocialProvider {
+  facebook
+}
+
+enum SocialAccountStatus {
+  active
+  expired
+  revoked
+}
+
+enum TokenKind {
+  user
+  page
+}
+
+enum TokenStatus {
+  valid
+  expiring
+  expired
+  missing
+}
+
+enum MediaKind {
+  image
+  video
+}
+
+enum MediaStatus {
+  processing
+  ready
+  failed
+}
+
+enum PostKind {
+  text
+  photo
+  multi_photo
+}
+
+enum PostStatus {
+  draft
+  queued
+  scheduled
+  publishing
+  published
+  partial
+  failed
+  cancelled
+}
+
+enum PagePostStatus {
+  queued
+  publishing
+  published
+  failed
+  skipped
+}
+
+enum CommentStatus {
+  queued
+  scheduled
+  publishing
+  published
+  failed
+}
+
+enum CampaignStatus {
+  draft
+  scheduled
+  running
+  completed
+  failed
+  cancelled
+}
+
+enum JobKind {
+  publish_post
+  publish_comment
+  token_refresh
+  media_process
+}
+
+enum JobStatus {
+  pending
+  enqueued
+  running
+  done
+  failed
+  cancelled
+}
+
+enum AttemptStatus {
+  success
+  failed
+}
+
+enum ConfigKind {
+  post
+  comment
+  campaign
+}
+
+enum TemplateKind {
+  post
+  comment
+}
+
+// ---------------- identity & tenancy ----------------
+
+model User {
+  id           String   @id @default(uuid()) @db.Uuid
+  email        String   @unique
+  passwordHash String   @map("password_hash")
+  displayName  String   @map("display_name")
+  avatarUrl    String?  @map("avatar_url")
+  timezone     String   @default("Asia/Bangkok")
+  locale       String   @default("th")
+  isActive     Boolean  @default(true) @map("is_active")
+  lastLoginAt  DateTime? @map("last_login_at")
+  createdAt    DateTime @default(now()) @map("created_at")
+  updatedAt    DateTime @updatedAt @map("updated_at")
+  deletedAt    DateTime? @map("deleted_at")
+
+  refreshTokens       RefreshToken[]
+  ownedWorkspaces     Workspace[]        @relation("WorkspaceOwner")
+  memberships         WorkspaceMember[]
+  socialAccounts      SocialAccount[]    @relation("AccountConnector")
+  media               MediaAsset[]
+  posts               Post[]
+  comments            Comment[]
+  activityLogs        ActivityLog[]
+  notifications       Notification[]
+
+  @@map("users")
+}
+
+model RefreshToken {
+  id          String    @id @default(uuid()) @db.Uuid
+  userId      String    @map("user_id") @db.Uuid
+  tokenHash   String    @unique @map("token_hash")
+  familyId    String    @map("family_id") @db.Uuid
+  expiresAt   DateTime  @map("expires_at")
+  revokedAt   DateTime? @map("revoked_at")
+  createdByIp String?   @map("created_by_ip")
+  userAgent   String?   @map("user_agent")
+  createdAt   DateTime  @default(now()) @map("created_at")
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+  @@index([familyId])
+  @@map("refresh_tokens")
+}
+
+model Workspace {
+  id        String   @id @default(uuid()) @db.Uuid
+  name      String
+  slug      String   @unique
+  ownerId   String   @map("owner_id") @db.Uuid
+  plan      String   @default("free")
+  settings  Json     @default("{}")
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+  deletedAt DateTime? @map("deleted_at")
+
+  owner        User               @relation("WorkspaceOwner", fields: [ownerId], references: [id])
+  members      WorkspaceMember[]
+  invitations  WorkspaceInvitation[]
+  socialAccounts SocialAccount[]
+  socialPages  SocialPage[]
+  mediaAssets  MediaAsset[]
+  products     Product[]
+  postTemplates PostTemplate[]
+  commentTemplates CommentTemplate[]
+  configurations Configuration[]
+  campaigns    Campaign[]
+  posts        Post[]
+  comments     Comment[]
+  scheduledJobs ScheduledJob[]
+  activityLogs ActivityLog[]
+  notifications Notification[]
+
+  @@map("workspaces")
+}
+
+model WorkspaceMember {
+  id          String        @id @default(uuid()) @db.Uuid
+  workspaceId String        @map("workspace_id") @db.Uuid
+  userId      String        @map("user_id") @db.Uuid
+  role        WorkspaceRole
+  invitedBy   String?       @map("invited_by") @db.Uuid
+  joinedAt    DateTime      @default(now()) @map("joined_at")
+  createdAt   DateTime      @default(now()) @map("created_at")
+  updatedAt   DateTime      @updatedAt @map("updated_at")
+
+  workspace Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  user      User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([workspaceId, userId])
+  @@index([userId])
+  @@map("workspace_members")
+}
+
+model WorkspaceInvitation {
+  id          String        @id @default(uuid()) @db.Uuid
+  workspaceId String        @map("workspace_id") @db.Uuid
+  email       String
+  role        WorkspaceRole
+  tokenHash   String        @unique @map("token_hash")
+  invitedBy   String        @map("invited_by") @db.Uuid
+  expiresAt   DateTime      @map("expires_at")
+  acceptedAt  DateTime?     @map("accepted_at")
+  createdAt   DateTime      @default(now()) @map("created_at")
+
+  workspace Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+
+  @@index([email])
+  @@map("workspace_invitations")
+}
+
+// ---------------- social / meta ----------------
+
+model SocialAccount {
+  id             String              @id @default(uuid()) @db.Uuid
+  workspaceId    String              @map("workspace_id") @db.Uuid
+  provider       SocialProvider      @default(facebook)
+  providerUserId String              @map("provider_user_id")
+  displayName    String              @map("display_name")
+  avatarUrl      String?             @map("avatar_url")
+  connectedBy    String              @map("connected_by") @db.Uuid
+  status         SocialAccountStatus @default(active)
+  scopes         String[]
+  lastSyncedAt   DateTime?           @map("last_synced_at")
+  createdAt      DateTime            @default(now()) @map("created_at")
+  updatedAt      DateTime            @updatedAt @map("updated_at")
+  deletedAt      DateTime?           @map("deleted_at")
+
+  workspace Workspace   @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  connector User        @relation("AccountConnector", fields: [connectedBy], references: [id])
+  tokens    SocialToken[]
+  pages     SocialPage[]
+
+  @@unique([workspaceId, provider, providerUserId])
+  @@map("social_accounts")
+}
+
+model SocialPage {
+  id              String       @id @default(uuid()) @db.Uuid
+  workspaceId     String       @map("workspace_id") @db.Uuid
+  socialAccountId String       @map("social_account_id") @db.Uuid
+  provider        SocialProvider @default(facebook)
+  pageId          String       @map("page_id")
+  name            String
+  category        String?
+  avatarUrl       String?      @map("avatar_url")
+  followersCount  Int?         @map("followers_count")
+  isEnabled       Boolean      @default(false) @map("is_enabled")
+  permissions     String[]
+  tasks           String[]
+  tokenStatus     TokenStatus  @default(missing) @map("token_status")
+  tokenExpiresAt  DateTime?    @map("token_expires_at")
+  lastSyncedAt    DateTime?    @map("last_synced_at")
+  createdAt       DateTime     @default(now()) @map("created_at")
+  updatedAt       DateTime     @updatedAt @map("updated_at")
+  deletedAt       DateTime?    @map("deleted_at")
+
+  workspace     Workspace     @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  socialAccount SocialAccount @relation(fields: [socialAccountId], references: [id], onDelete: Cascade)
+  tokens        SocialToken[]
+  postPages     PostPage[]
+  comments      Comment[]
+  campaignPages CampaignPage[]
+
+  @@unique([workspaceId, pageId])
+  @@map("social_pages")
+}
+
+model SocialToken {
+  id              String    @id @default(uuid()) @db.Uuid
+  socialAccountId String    @map("social_account_id") @db.Uuid
+  socialPageId    String?   @map("social_page_id") @db.Uuid
+  kind            TokenKind
+  tokenEncrypted  Bytes     @map("token_encrypted")
+  tokenLast4      String    @map("token_last4")
+  expiresAt       DateTime? @map("expires_at")
+  isValid         Boolean   @default(true) @map("is_valid")
+  lastValidatedAt DateTime? @map("last_validated_at")
+  createdAt       DateTime  @default(now()) @map("created_at")
+  updatedAt       DateTime  @updatedAt @map("updated_at")
+
+  socialAccount SocialAccount @relation(fields: [socialAccountId], references: [id], onDelete: Cascade)
+  socialPage    SocialPage?   @relation(fields: [socialPageId], references: [id], onDelete: Cascade)
+
+  @@index([socialAccountId])
+  @@map("social_tokens")
+}
+
+// ---------------- media & products ----------------
+
+model MediaAsset {
+  id           String      @id @default(uuid()) @db.Uuid
+  workspaceId  String      @map("workspace_id") @db.Uuid
+  uploaderId   String      @map("uploader_id") @db.Uuid
+  storageKey   String      @map("storage_key")
+  url          String
+  thumbnailUrl String?     @map("thumbnail_url")
+  kind         MediaKind   @default(image)
+  mimeType     String      @map("mime_type")
+  sizeBytes    Int         @map("size_bytes")
+  width        Int?
+  height       Int?
+  sha256       String?
+  category     String?
+  name         String
+  tags         String[]
+  status       MediaStatus @default(processing)
+  productId    String?     @map("product_id") @db.Uuid
+  createdAt    DateTime    @default(now()) @map("created_at")
+  updatedAt    DateTime    @updatedAt @map("updated_at")
+  deletedAt    DateTime?   @map("deleted_at")
+
+  workspace Workspace  @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  uploader  User       @relation(fields: [uploaderId], references: [id])
+  product   Product?   @relation(fields: [productId], references: [id], onDelete: SetNull)
+  postMedia PostMedia[]
+  comments  Comment[]
+
+  @@index([workspaceId, category])
+  @@index([workspaceId, sha256])
+  @@map("media_assets")
+}
+
+model Product {
+  id          String   @id @default(uuid()) @db.Uuid
+  workspaceId String   @map("workspace_id") @db.Uuid
+  name        String
+  sku         String?
+  description String?
+  price       Decimal? @db.Decimal(12, 2)
+  currency    String   @default("THB") @db.Char(3)
+  isActive    Boolean  @default(true) @map("is_active")
+  createdAt   DateTime @default(now()) @map("created_at")
+  updatedAt   DateTime @updatedAt @map("updated_at")
+  deletedAt   DateTime? @map("deleted_at")
+
+  workspace Workspace    @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  media     MediaAsset[]
+
+  @@index([workspaceId, isActive])
+  @@map("products")
+}
+
+// ---------------- templates & configurations ----------------
+
+model PostTemplate {
+  id          String   @id @default(uuid()) @db.Uuid
+  workspaceId String   @map("workspace_id") @db.Uuid
+  name        String
+  body        String
+  mediaIds    String[] @map("media_ids") @db.Uuid
+  variables   Json     @default("{}")
+  createdBy   String   @map("created_by") @db.Uuid
+  createdAt   DateTime @default(now()) @map("created_at")
+  updatedAt   DateTime @updatedAt @map("updated_at")
+  deletedAt   DateTime? @map("deleted_at")
+
+  workspace Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+
+  @@index([workspaceId])
+  @@map("post_templates")
+}
+
+model CommentTemplate {
+  id          String   @id @default(uuid()) @db.Uuid
+  workspaceId String   @map("workspace_id") @db.Uuid
+  name        String
+  body        String
+  mediaId     String?  @map("media_id") @db.Uuid
+  createdBy   String   @map("created_by") @db.Uuid
+  createdAt   DateTime @default(now()) @map("created_at")
+  updatedAt   DateTime @updatedAt @map("updated_at")
+  deletedAt   DateTime? @map("deleted_at")
+
+  workspace Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+
+  @@index([workspaceId])
+  @@map("comment_templates")
+}
+
+model Configuration {
+  id          String     @id @default(uuid()) @db.Uuid
+  workspaceId String     @map("workspace_id") @db.Uuid
+  name        String
+  kind        ConfigKind
+  payload     Json
+  createdBy   String     @map("created_by") @db.Uuid
+  updatedBy   String     @map("updated_by") @db.Uuid
+  createdAt   DateTime   @default(now()) @map("created_at")
+  updatedAt   DateTime   @updatedAt @map("updated_at")
+
+  workspace Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+
+  @@unique([workspaceId, name, kind])
+  @@map("configurations")
+}
+
+// ---------------- publishing ----------------
+
+model Campaign {
+  id          String         @id @default(uuid()) @db.Uuid
+  workspaceId String         @map("workspace_id") @db.Uuid
+  name        String
+  description String?
+  status      CampaignStatus @default(draft)
+  scheduledAt DateTime?      @map("scheduled_at")
+  createdBy   String         @map("created_by") @db.Uuid
+  createdAt   DateTime       @default(now()) @map("created_at")
+  updatedAt   DateTime       @updatedAt @map("updated_at")
+  deletedAt   DateTime?      @map("deleted_at")
+
+  workspace Workspace      @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  pages     CampaignPage[]
+  posts     Post[]
+
+  @@index([workspaceId, status])
+  @@map("campaigns")
+}
+
+model CampaignPage {
+  id           String @id @default(uuid()) @db.Uuid
+  campaignId   String @map("campaign_id") @db.Uuid
+  socialPageId String @map("social_page_id") @db.Uuid
+
+  campaign   Campaign   @relation(fields: [campaignId], references: [id], onDelete: Cascade)
+  socialPage SocialPage @relation(fields: [socialPageId], references: [id], onDelete: Cascade)
+
+  @@unique([campaignId, socialPageId])
+  @@map("campaign_pages")
+}
+
+model Post {
+  id             String     @id @default(uuid()) @db.Uuid
+  workspaceId    String     @map("workspace_id") @db.Uuid
+  campaignId     String?    @map("campaign_id") @db.Uuid
+  createdBy      String     @map("created_by") @db.Uuid
+  kind           PostKind
+  body           String
+  linkUrl        String?    @map("link_url")
+  idempotencyKey String?    @map("idempotency_key")
+  status         PostStatus @default(draft)
+  scheduledAt    DateTime?  @map("scheduled_at")
+  publishedAt    DateTime?  @map("published_at")
+  createdAt      DateTime   @default(now()) @map("created_at")
+  updatedAt      DateTime   @updatedAt @map("updated_at")
+  deletedAt      DateTime?  @map("deleted_at")
+
+  workspace  Workspace   @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  campaign   Campaign?   @relation(fields: [campaignId], references: [id], onDelete: SetNull)
+  creator    User        @relation(fields: [createdBy], references: [id])
+  media      PostMedia[]
+  pages      PostPage[]
+  comments   Comment[]
+
+  @@unique([workspaceId, idempotencyKey])
+  @@index([workspaceId, status, scheduledAt])
+  @@map("posts")
+}
+
+model PostMedia {
+  id           String @id @default(uuid()) @db.Uuid
+  postId       String @map("post_id") @db.Uuid
+  mediaAssetId String @map("media_asset_id") @db.Uuid
+  position     Int
+
+  post       Post       @relation(fields: [postId], references: [id], onDelete: Cascade)
+  mediaAsset MediaAsset @relation(fields: [mediaAssetId], references: [id], onDelete: Cascade)
+
+  @@unique([postId, position])
+  @@map("post_media")
+}
+
+model PostPage {
+  id            String         @id @default(uuid()) @db.Uuid
+  postId        String         @map("post_id") @db.Uuid
+  socialPageId  String         @map("social_page_id") @db.Uuid
+  bodyOverride  String?        @map("body_override")
+  fbPostId      String?        @map("fb_post_id")
+  status        PagePostStatus @default(queued)
+  attemptCount  Int            @default(0) @map("attempt_count")
+  lastError     Json?          @map("last_error")
+  publishedAt   DateTime?      @map("published_at")
+  createdAt     DateTime       @default(now()) @map("created_at")
+  updatedAt     DateTime       @updatedAt @map("updated_at")
+
+  post       Post       @relation(fields: [postId], references: [id], onDelete: Cascade)
+  socialPage SocialPage @relation(fields: [socialPageId], references: [id], onDelete: Cascade)
+
+  @@unique([postId, socialPageId])
+  @@index([status])
+  @@map("post_pages")
+}
+
+model Comment {
+  id              String        @id @default(uuid()) @db.Uuid
+  workspaceId     String        @map("workspace_id") @db.Uuid
+  socialPageId    String        @map("social_page_id") @db.Uuid
+  postId          String?       @map("post_id") @db.Uuid
+  fbTargetId      String        @map("fb_target_id")
+  parentCommentId String?       @map("parent_comment_id")
+  body            String?
+  mediaAssetId    String?       @map("media_asset_id") @db.Uuid
+  fbCommentId     String?       @map("fb_comment_id")
+  status          CommentStatus @default(queued)
+  scheduledAt     DateTime?     @map("scheduled_at")
+  publishedAt     DateTime?     @map("published_at")
+  lastError       Json?         @map("last_error")
+  idempotencyKey  String?       @map("idempotency_key")
+  createdBy       String        @map("created_by") @db.Uuid
+  createdAt       DateTime      @default(now()) @map("created_at")
+  updatedAt       DateTime      @updatedAt @map("updated_at")
+  deletedAt       DateTime?     @map("deleted_at")
+
+  workspace   Workspace    @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  socialPage  SocialPage   @relation(fields: [socialPageId], references: [id], onDelete: Cascade)
+  post        Post?        @relation(fields: [postId], references: [id], onDelete: SetNull)
+  mediaAsset  MediaAsset?  @relation(fields: [mediaAssetId], references: [id], onDelete: SetNull)
+  creator     User         @relation(fields: [createdBy], references: [id])
+
+  @@index([workspaceId, status, scheduledAt])
+  @@map("comments")
+}
+
+// ---------------- jobs & audit ----------------
+
+model ScheduledJob {
+  id          String    @id @default(uuid()) @db.Uuid
+  workspaceId String    @map("workspace_id") @db.Uuid
+  kind        JobKind
+  refId       String    @map("ref_id") @db.Uuid
+  queueJobId  String?   @map("queue_job_id")
+  runAt       DateTime  @map("run_at")
+  timezone    String    @default("Asia/Bangkok")
+  status      JobStatus @default(pending)
+  dedupeKey   String?   @map("dedupe_key")
+  createdAt   DateTime  @default(now()) @map("created_at")
+  updatedAt   DateTime  @updatedAt @map("updated_at")
+
+  workspace Workspace    @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  attempts  JobAttempt[]
+
+  @@unique([dedupeKey])
+  @@index([status, runAt])
+  @@map("scheduled_jobs")
+}
+
+model JobAttempt {
+  id             String        @id @default(uuid()) @db.Uuid
+  scheduledJobId String        @map("scheduled_job_id") @db.Uuid
+  attemptNo      Int           @map("attempt_no")
+  startedAt      DateTime      @default(now()) @map("started_at")
+  finishedAt     DateTime?     @map("finished_at")
+  status         AttemptStatus
+  error          Json?
+  metaResponse   Json?         @map("meta_response")
+
+  scheduledJob ScheduledJob @relation(fields: [scheduledJobId], references: [id], onDelete: Cascade)
+
+  @@index([scheduledJobId])
+  @@map("job_attempts")
+}
+
+model ActivityLog {
+  id          String   @id @default(uuid()) @db.Uuid
+  workspaceId String   @map("workspace_id") @db.Uuid
+  actorId     String?  @map("actor_id") @db.Uuid
+  action      String
+  entityType  String?  @map("entity_type")
+  entityId    String?  @map("entity_id") @db.Uuid
+  metadata    Json     @default("{}")
+  ip          String?
+  createdAt   DateTime @default(now()) @map("created_at")
+
+  workspace Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  actor     User?     @relation(fields: [actorId], references: [id], onDelete: SetNull)
+
+  @@index([workspaceId, createdAt])
+  @@index([entityType, entityId])
+  @@map("activity_logs")
+}
+
+model Notification {
+  id          String    @id @default(uuid()) @db.Uuid
+  workspaceId String    @map("workspace_id") @db.Uuid
+  userId      String?   @map("user_id") @db.Uuid
+  kind        String
+  title       String
+  body        String
+  data        Json      @default("{}")
+  readAt      DateTime? @map("read_at")
+  createdAt   DateTime  @default(now()) @map("created_at")
+
+  workspace Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  user      User?     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([workspaceId, userId, readAt])
+  @@map("notifications")
+}

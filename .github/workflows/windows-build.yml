@@ -1,0 +1,37 @@
+name: Windows Build
+
+on:
+  workflow_dispatch:
+  push: { tags: ["v*"] }
+
+jobs:
+  build-nsis:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+      - uses: actions/setup-node@v4
+        with: { node-version: 22, cache: pnpm }
+      - uses: dtolnay/rust-toolchain@stable
+        with: { targets: x86_64-pc-windows-msvc }
+      - name: Cache cargo
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.cargo/bin
+            ~/.cargo/registry
+            apps/desktop/src-tauri/target
+          key: ${{ runner.os }}-cargo-${{ hashFiles('apps/desktop/src-tauri/Cargo.lock') }}
+      - run: pnpm install --frozen-lockfile
+      - run: pnpm --filter @scm/contracts --filter @scm/sdk build
+      - name: Build desktop frontend
+        run: pnpm --filter @scm/desktop build
+        env:
+          VITE_API_BASE_URL: ${{ vars.API_BASE_URL || 'http://localhost:3001' }}
+      - name: Build Tauri NSIS bundle
+        uses: tauri-apps/tauri-action@v0
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        with:
+          projectPath: apps/desktop
+          tagName: ${{ github.ref_name }}

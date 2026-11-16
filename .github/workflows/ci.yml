@@ -1,0 +1,49 @@
+name: CI
+
+on:
+  push: { branches: [main] }
+  pull_request:
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  build-test:
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:16-alpine
+        env: { POSTGRES_USER: scm, POSTGRES_PASSWORD: scm, POSTGRES_DB: scm }
+        ports: ["5432:5432"]
+        options: >-
+          --health-cmd "pg_isready -U scm" --health-interval 5s
+          --health-timeout 5s --health-retries 10
+      redis:
+        image: redis:7-alpine
+        ports: ["6379:6379"]
+        options: >-
+          --health-cmd "redis-cli ping" --health-interval 5s
+          --health-timeout 3s --health-retries 10
+    env:
+      DATABASE_URL: postgresql://scm:scm@localhost:5432/scm
+      REDIS_URL: redis://localhost:6379
+      JWT_SECRET: ci-secret-ci-secret-ci-secret-1234
+      TOKEN_ENCRYPTION_KEY: "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef"
+      S3_ENDPOINT: http://localhost:9000
+      S3_BUCKET: scm-media
+      S3_ACCESS_KEY: x
+      S3_SECRET_KEY: x
+      S3_FORCE_PATH_STYLE: "true"
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+      - uses: actions/setup-node@v4
+        with: { node-version: 22, cache: pnpm }
+      - run: pnpm install --frozen-lockfile
+      - run: pnpm --filter @scm/contracts --filter @scm/sdk build
+      - name: Prisma migrate + generate
+        run: pnpm --filter @scm/api exec prisma migrate deploy || pnpm --filter @scm/api exec prisma db push
+      - run: pnpm -r typecheck
+      - run: pnpm -r build
+      - run: pnpm -r test
