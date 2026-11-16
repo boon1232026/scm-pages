@@ -258,18 +258,34 @@ export const postSchema = z.object({
 export type Post = z.infer<typeof postSchema>;
 
 // ---------- comments ----------
-export const createCommentSchema = z
-  .object({
-    pageId: uuid,
-    fbTargetId: z.string().min(1),
-    parentCommentId: z.string().optional(),
-    body: z.string().max(8000).optional(),
-    mediaId: uuid.optional(),
-    scheduledAt: isoDateTime.optional(),
-    idempotencyKey: z.string().min(8).max(120).optional(),
-  })
+const createCommentObject = z.object({
+  pageId: uuid,
+  fbTargetId: z.string().min(1),
+  parentCommentId: z.string().optional(),
+  body: z.string().max(8000).optional(),
+  mediaId: uuid.optional(),
+  scheduledAt: isoDateTime.optional(),
+  idempotencyKey: z.string().min(8).max(120).optional(),
+});
+export const createCommentSchema = createCommentObject
   .refine((v) => v.body || v.mediaId, { message: "body or mediaId required" });
 export type CreateCommentInput = z.infer<typeof createCommentSchema>;
+
+export const fbPostPhotoSchema = z.object({
+  fbPhotoId: z.string(),
+  imageUrl: z.string().nullable(),
+});
+export type FbPostPhoto = z.infer<typeof fbPostPhotoSchema>;
+
+export const createCommentBatchSchema = z.object({
+  comments: z
+    .array(createCommentObject.omit({ scheduledAt: true }).refine((v) => v.body || v.mediaId, { message: "body or mediaId required" }))
+    .min(1)
+    .max(80),
+  staggerSeconds: z.number().int().min(0).max(3600).default(0),
+  idempotencyKey: z.string().min(8).max(120).optional(),
+});
+export type CreateCommentBatchInput = z.infer<typeof createCommentBatchSchema>;
 
 export const commentSchema = z.object({
   id: uuid,

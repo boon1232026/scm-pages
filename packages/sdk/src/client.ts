@@ -5,12 +5,14 @@ import {
   type ApiError,
   type AuthResponse,
   type CreatePostInput,
+  type CreateCommentBatchInput,
   type CreateCommentInput,
   type CreateUploadInput,
   type SocialAccount,
   type SocialPage,
   type PageHealth,
   type FbFeedPost,
+  type FbPostPhoto,
   type MediaAsset,
   type UploadTicket,
   type Post,
@@ -151,7 +153,10 @@ export class SocialCommerceClient {
   setPageEnabled = (id: string, isEnabled: boolean) =>
     this.patch<SocialPage>(Routes.pages.byId(id), { isEnabled });
   pageHealth = (id: string) => this.get<PageHealth>(Routes.pages.health(id));
-  pageFeed = (id: string, limit = 25) => this.get<FbFeedPost[]>(Routes.pages.feed(id), { limit });
+  pageFeed = (id: string, q?: { limit?: number; cursor?: string }) =>
+    this.get<Page<FbFeedPost>>(Routes.pages.feed(id), { limit: q?.limit, cursor: q?.cursor });
+  postPhotos = (pageId: string, fbPostId: string) =>
+    this.get<{ photos: FbPostPhoto[] }>(Routes.pages.postPhotos(pageId, fbPostId));
 
   // ---------- media ----------
   createUpload = (b: CreateUploadInput) => this.post<UploadTicket>(Routes.media.uploads, b);
@@ -174,6 +179,8 @@ export class SocialCommerceClient {
   // ---------- comments ----------
   createComment = (b: CreateCommentInput) =>
     this.post<Comment>(Routes.comments.root, b, b.idempotencyKey);
+  createCommentBatch = (b: CreateCommentBatchInput) =>
+    this.post<{ created: number }>(Routes.comments.batch, b, b.idempotencyKey);
   listComments = (q?: { status?: string; cursor?: string }) =>
     this.get<Page<Comment>>(Routes.comments.root, { status: q?.status, cursor: q?.cursor });
   retryComment = (id: string) => this.post<Comment>(Routes.comments.retry(id));

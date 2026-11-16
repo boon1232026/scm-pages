@@ -8,7 +8,7 @@ import { PrismaService } from "../prisma/prisma.service";
 import { QueueService } from "../queue/queue.service";
 import { MediaService } from "../media/media.service";
 import { ActivityLogService } from "../activity-log/activity-log.service";
-import type { Comment, CreateCommentInput } from "@scm/contracts";
+import type { Comment, CreateCommentBatchInput, CreateCommentInput } from "@scm/contracts";
 
 @Injectable()
 export class CommentsService {
@@ -82,6 +82,27 @@ export class CommentsService {
       metadata: { pageId: page.id, target: input.fbTargetId, hasMedia: !!input.mediaId },
     });
     return this.toDto(comment);
+  }
+
+  /**
+   * Batch comments on existing fb objects (old posts / photos). Item i is
+   * delayed by i * staggerSeconds; item 0 goes immediately.
+   */
+  async createBatch(workspaceId: string, userId: string, input: CreateCommentBatchInput) {
+    const stagger = input.staggerSeconds ?? 0;
+    let created = 0;
+    for (const [i, c] of input.comments.entries()) {
+      const scheduledAt = i * stagger > 0 ? new Date(Date.now() + i * stagger * 1000).toISOString() : undefined;
+      await this.create(workspaceId, userId, {
+        ...c,
+        ...(scheduledAt ? { scheduledAt } : {}),
+        idempotencyKey: input.idempotencyKey
+          ? `${input.idempotencyKey}-${i}`
+          : (c.idempotencyKey ?? undefined),
+      });
+      created++;
+    }
+    return { created };
   }
 
   async list(workspaceId: string, q?: { status?: string; cursor?: string }) {

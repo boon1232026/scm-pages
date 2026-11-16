@@ -100,18 +100,29 @@ export class PagesService {
     return { pageId: page.id, tokenStatus: status, tokenExpiresAt: expiresAt?.toISOString() ?? null, scopes, canPost, canComment, issues };
   }
 
-  /** Recent posts on the page — used by the comment-target picker. */
-  async feed(workspaceId: string, pageUuid: string, limit: number) {
+  /** Page's own posts with cursor pagination — used by the comment-on-existing-post picker. */
+  async feed(workspaceId: string, pageUuid: string, limit: number, after?: string) {
     const page = await this.findInWorkspace(workspaceId, pageUuid);
     const token = await this.accounts.getPageToken(page.id);
-    const posts = await this.meta.pageFeed(page.pageId, token, limit);
-    return posts.map((p) => ({
-      id: p.id,
-      message: p.message ?? null,
-      createdTime: p.created_time,
-      permalinkUrl: p.permalink_url ?? null,
-      thumbnailUrl: p.full_picture ?? null,
-    }));
+    const { items, nextCursor } = await this.meta.pageFeed(page.pageId, token, limit, after);
+    return {
+      items: items.map((p) => ({
+        id: p.id,
+        message: p.message ?? null,
+        createdTime: p.created_time,
+        permalinkUrl: p.permalink_url ?? null,
+        thumbnailUrl: p.full_picture ?? null,
+      })),
+      nextCursor,
+    };
+  }
+
+  /** Photos inside one page post — fb photo ids usable as comment targets. */
+  async postPhotos(workspaceId: string, pageUuid: string, fbPostId: string) {
+    const page = await this.findInWorkspace(workspaceId, pageUuid);
+    const token = await this.accounts.getPageToken(page.id);
+    const photos = await this.meta.postPhotos(fbPostId, token);
+    return { photos };
   }
 
   async findInWorkspace(workspaceId: string, pageUuid: string) {

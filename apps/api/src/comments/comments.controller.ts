@@ -14,7 +14,7 @@ import { JwtAuthGuard } from "../auth/jwt-auth.guard";
 import { CurrentUser, RequireRole, WorkspaceGuard, WorkspaceId } from "../common/workspace.guard";
 import { ZodPipe } from "../common/zod-validation.pipe";
 import { CommentsService } from "./comments.service";
-import { createCommentSchema } from "@scm/contracts";
+import { createCommentBatchSchema, createCommentSchema } from "@scm/contracts";
 
 @ApiTags("comments")
 @ApiBearerAuth()
@@ -32,6 +32,17 @@ export class CommentsController {
     @Body(new ZodPipe(createCommentSchema)) body: Parameters<CommentsService["create"]>[2],
   ) {
     return this.comments.create(workspaceId!, userId, body);
+  }
+
+  @Post("batch")
+  @HttpCode(202)
+  @RequireRole("member")
+  createBatch(
+    @WorkspaceId() workspaceId: string,
+    @CurrentUser() userId: string,
+    @Body(new ZodPipe(createCommentBatchSchema)) body: Parameters<CommentsService["createBatch"]>[2],
+  ) {
+    return this.comments.createBatch(workspaceId!, userId, body);
   }
 
   @Get()

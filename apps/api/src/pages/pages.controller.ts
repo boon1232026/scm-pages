@@ -57,7 +57,13 @@ export class PagesController {
     @WorkspaceId() workspaceId: string,
     @Param("id", ParseUUIDPipe) id: string,
     @Query("limit", new ParseIntPipe({ optional: true })) limit?: number,
+    @Query("cursor") cursor?: string,
   ) {
-    return this.pages.feed(workspaceId!, id, limit ?? 25);
+    return this.pages.feed(workspaceId!, id, limit ?? 25, cursor);
+  }
+
+  @Get(":id/posts/:fbPostId/photos")
+  postPhotos(@WorkspaceId() workspaceId: string, @Param("id", ParseUUIDPipe) id: string, @Param("fbPostId") fbPostId: string) {
+    return this.pages.postPhotos(workspaceId!, id, fbPostId);
   }
 }

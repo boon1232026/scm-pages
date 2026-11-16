@@ -7,6 +7,7 @@ import OAuthCallback from "./screens/OAuthCallback";
 import Accounts from "./screens/Accounts";
 import Pages from "./screens/Pages";
 import Compose from "./screens/Compose";
+import CommentPost from "./screens/CommentPost";
 import History from "./screens/History";
 import Settings from "./screens/Settings";
 
@@ -15,6 +16,7 @@ const NAV = [
   { to: "/accounts", icon: "◉", label: "Facebook Accounts" },
   { to: "/pages", icon: "▦", label: "Page Management" },
   { to: "/compose", icon: "✎", label: "Compose" },
+  { to: "/comment-post", icon: "✱", label: "คอมเมนต์โพสต์เก่า" },
   { to: "/history", icon: "↺", label: "History" },
   { to: "/settings", icon: "⚙", label: "Settings" },
 ];
@@ -49,6 +51,7 @@ export default function App() {
           <Route path="/accounts" element={<Accounts />} />
           <Route path="/pages" element={<Pages />} />
           <Route path="/compose" element={<Compose />} />
+          <Route path="/comment-post" element={<CommentPost />} />
           <Route path="/history" element={<History />} />
           <Route path="/settings" element={<Settings />} />
         </Routes>

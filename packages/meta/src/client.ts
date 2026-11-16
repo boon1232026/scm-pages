@@ -48,6 +48,19 @@ export interface PageFeedItem {
   full_picture?: string;
 }
 
+export interface PostPhoto {
+  /** Facebook object id that accepts comments (photo id for multi-photo posts). */
+  fbPhotoId: string;
+  imageUrl: string | null;
+}
+
+interface GraphAttachment {
+  type?: string;
+  media?: { image?: { src?: string } };
+  target?: { id?: string };
+  subattachments?: { data?: GraphAttachment[] };
+}
+
 export interface GraphPost {
   id: string;
   post_id?: string;
@@ -128,13 +141,44 @@ export class MetaClient {
     return res.data;
   }
 
-  async pageFeed(pageId: string, pageToken: string, limit = 25): Promise<PageFeedItem[]> {
-    const res = await this.get<{ data: PageFeedItem[] }>(`/${pageId}/feed`, {
-      fields: "id,message,created_time,permalink_url,full_picture",
-      limit: String(Math.min(limit, 100)),
+  /** Page's own posts (not visitor posts) with cursor pagination. */
+  async pageFeed(
+    pageId: string,
+    pageToken: string,
+    limit = 25,
+    after?: string,
+  ): Promise<{ items: PageFeedItem[]; nextCursor: string | null }> {
+    const res = await this.get<{ data: PageFeedItem[]; paging?: { cursors?: { after?: string }; next?: string } }>(
+      `/${pageId}/posts`,
+      {
+        fields: "id,message,created_time,permalink_url,full_picture",
+        limit: String(Math.min(limit, 100)),
+        access_token: pageToken,
+        ...(after ? { after } : {}),
+      },
+    );
+    const nextCursor = res.paging?.next ? (res.paging.cursors?.after ?? null) : null;
+    return { items: res.data, nextCursor };
+  }
+
+  /** Photos inside a post — photo ids usable as comment targets. */
+  async postPhotos(postId: string, pageToken: string): Promise<PostPhoto[]> {
+    const res = await this.get<{ attachments?: { data?: GraphAttachment[] } }>(`/${postId}`, {
+      fields: "attachments{media,type,subattachments{media,target,type}}",
       access_token: pageToken,
     });
-    return res.data;
+    const out: PostPhoto[] = [];
+    for (const att of res.attachments?.data ?? []) {
+      const subs = att.subattachments?.data;
+      if (subs?.length) {
+        for (const s of subs) {
+          if (s.target?.id) out.push({ fbPhotoId: s.target.id, imageUrl: s.media?.image?.src ?? null });
+        }
+      } else if (att.target?.id) {
+        out.push({ fbPhotoId: att.target.id, imageUrl: att.media?.image?.src ?? null });
+      }
+    }
+    return out;
   }
 
   // ---------- publishing ----------

@@ -18,6 +18,7 @@ async function loadPages<T>(fetchPage: (cursor?: string) => Promise<{ items: T[]
 export default function History() {
   const posts = useQuery(() => api.listPosts(), []);
   const comments = useQuery(() => loadPages<Comment>((cursor) => api.listComments(cursor ? { cursor } : undefined)), []);
+  const allPages = useQuery(() => api.listPages(), []);
   const media = useQuery(() => loadPages<MediaAsset>((cursor) => api.listMedia(cursor ? { cursor } : undefined)), []);
   const notifications = useQuery(() => api.listNotifications(), []);
   const mediaById = new Map((media.data?.items ?? []).map((m) => [m.id, m]));
@@ -26,6 +27,9 @@ export default function History() {
   const [fFrom, setFFrom] = useState("");
   const [fTo, setFTo] = useState("");
   const [fText, setFText] = useState("");
+
+  const pageNameById = new Map((allPages.data ?? []).map((pg) => [pg.id, pg.name]));
+  const externalComments = (comments.data?.items ?? []).filter((c) => !c.postId);
 
   const items = (posts.data?.items ?? []).filter((p) => {
     if (fStatus !== "all" && p.status !== fStatus) return false;
@@ -200,6 +204,35 @@ export default function History() {
           })
         )}
       </div>
+      {externalComments.length ? (
+        <div className="card">
+          <h3>คอมเมนต์โพสต์เก่า</h3>
+          <table>
+            <tbody>
+              {externalComments.map((c) => (
+                <tr key={c.id}>
+                  <td>{pageNameById.get(c.socialPageId) ?? "Page"}</td>
+                  <td className="detail-body">{(c.body ?? "").slice(0, 120) || (c.mediaId ? "(image)" : "")}</td>
+                  <td>
+                    {c.mediaId && mediaById.get(c.mediaId) ? (
+                      <a href={mediaById.get(c.mediaId)!.url} target="_blank" rel="noreferrer">
+                        <img
+                          src={mediaById.get(c.mediaId)!.thumbnailUrl ?? mediaById.get(c.mediaId)!.url}
+                          alt="comment"
+                          className="detail-thumb detail-thumb-sm"
+                        />
+                      </a>
+                    ) : null}
+                  </td>
+                  <td><StatusBadge status={c.status} /></td>
+                  <td className="muted">{fmtDate(c.publishedAt ?? c.createdAt)}</td>
+                  <td className="muted mono">{(c.fbCommentId ?? c.lastError ?? c.fbTargetId).slice(0, 40)}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      ) : null}
       <div className="card">
         <h3>Notifications</h3>
         {!notifications.data?.length ? (

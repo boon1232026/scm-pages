@@ -29,6 +29,7 @@ export const Routes = {
     byId: (id: string) => `/pages/${id}`,
     health: (id: string) => `/pages/${id}/health`,
     feed: (id: string) => `/pages/${id}/feed`,
+    postPhotos: (id: string, fbPostId: string) => `/pages/${id}/posts/${fbPostId}/photos`,
   },
   media: {
     root: "/media",
@@ -44,6 +45,7 @@ export const Routes = {
   },
   comments: {
     root: "/comments",
+    batch: "/comments/batch",
     byId: (id: string) => `/comments/${id}`,
     retry: (id: string) => `/comments/${id}/retry`,
     cancel: (id: string) => `/comments/${id}/cancel`,
