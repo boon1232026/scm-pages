@@ -2,6 +2,38 @@ import { useEffect, useState } from "react";
 import { Link, useNavigate } from "react-router-dom";
 import { api, fetchHealth, session, type HealthResponse } from "../lib/api";
 import { fmtDate, StatusBadge, useQuery } from "../lib/hooks";
+import type { Comment, FbFeedPost, FbPostPhoto } from "@scm/contracts";
+
+/** Compact old-post comment group: fetches the post's summary on mount. */
+function ExtGroupRow({ fbPostId, comments, pageName }: { fbPostId: string; comments: Comment[]; pageName: string }) {
+  const [info, setInfo] = useState<{ post: FbFeedPost; photos: FbPostPhoto[] } | null>(null);
+  useEffect(() => {
+    api.postPhotos(comments[0]!.socialPageId, fbPostId).then(setInfo).catch(() => {});
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+  const counts = comments.reduce<Record<string, number>>((m, c) => ({ ...m, [c.status]: (m[c.status] ?? 0) + 1 }), {});
+  const latest = comments.map((c) => c.publishedAt ?? c.createdAt).sort().pop();
+  return (
+    <Link to="/history" className="dash-post">
+      {info?.post.thumbnailUrl ? (
+        <img src={info.post.thumbnailUrl} alt="" className="dash-post-thumb" />
+      ) : (
+        <div className="dash-post-thumb dash-post-thumb-ph">✱</div>
+      )}
+      <div className="dash-post-body">
+        <div className="dash-post-text">{(info?.post.message ?? "").slice(0, 80) || "(โพสต์เก่า)"}{(info?.post.message ?? "").length > 80 ? "…" : ""}</div>
+        <div className="muted dash-post-meta">
+          {pageName} · {comments.length} คอมเมนต์{latest ? ` · ${fmtDate(latest)}` : ""}
+        </div>
+      </div>
+      <div className="hrow-statuses">
+        {Object.entries(counts).map(([s, n]) => (
+          <span key={s} className="hrow-stat"><StatusBadge status={s} />{n}</span>
+        ))}
+      </div>
+    </Link>
+  );
+}
 
 export default function Dashboard() {
   const nav = useNavigate();
@@ -52,7 +84,12 @@ export default function Dashboard() {
   const mediaById = new Map((media.data?.items ?? []).map((m) => [m.id, m]));
   const pageNameById = new Map((pages.data ?? []).map((p) => [p.id, p.name]));
   const recent = items.slice(0, 6);
-  const extRecent = (allComments?.data?.items ?? []).filter((c) => !c.postId).slice(0, 6);
+  const extGroups = new Map<string, Comment[]>();
+  for (const c of (allComments?.data?.items ?? []).filter((c) => !c.postId)) {
+    const key = c.fbPostId ?? c.fbTargetId;
+    extGroups.set(key, [...(extGroups.get(key) ?? []), c]);
+  }
+  const extRecent = [...extGroups.entries()].slice(0, 6);
   const online = health?.status === "ok";
 
   const today = new Date().toLocaleDateString("th-TH", {
@@ -155,25 +192,14 @@ export default function Dashboard() {
               <h3>คอมเมนต์โพสต์เก่าล่าสุด</h3>
               <Link to="/history" className="link">ดูทั้งหมด →</Link>
             </div>
-            {extRecent.map((c) => {
-              const cm = c.mediaId ? mediaById.get(c.mediaId) : null;
-              return (
-                <Link key={c.id} to="/history" className="dash-post">
-                  {cm ? (
-                    <img src={cm.thumbnailUrl ?? cm.url} alt="" className="dash-post-thumb" />
-                  ) : (
-                    <div className="dash-post-thumb dash-post-thumb-ph">✱</div>
-                  )}
-                  <div className="dash-post-body">
-                    <div className="dash-post-text">{(c.body ?? "").slice(0, 80) || (cm ? "(รูปคอมเมนต์)" : "(คอมเมนต์)")}{(c.body ?? "").length > 80 ? "…" : ""}</div>
-                    <div className="muted dash-post-meta">
-                      {pageNameById.get(c.socialPageId) ?? "เพจ"} · {fmtDate(c.publishedAt ?? c.createdAt)}
-                    </div>
-                  </div>
-                  <StatusBadge status={c.status} />
-                </Link>
-              );
-            })}
+            {extRecent.map(([fbPostId, cs]) => (
+              <ExtGroupRow
+                key={fbPostId}
+                fbPostId={fbPostId}
+                comments={cs}
+                pageName={pageNameById.get(cs[0]!.socialPageId) ?? "เพจ"}
+              />
+            ))}
           </div>
         )}
         </div>
