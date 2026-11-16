@@ -8,6 +8,7 @@
     "dev:tauri": "tauri dev",
     "build": "tsc -p tsconfig.json && vite build",
     "build:tauri": "tauri build",
+    "tauri": "tauri",
     "preview": "vite preview",
     "typecheck": "tsc -p tsconfig.json --noEmit",
     "test": "vitest run --passWithNoTests",
