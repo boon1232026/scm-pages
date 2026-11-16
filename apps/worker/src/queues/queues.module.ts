@@ -5,6 +5,10 @@ import { PublishPostProcessor } from "./publish-post.processor";
 import { PublishCommentProcessor } from "./publish-comment.processor";
 import { TokenRefreshProcessor } from "./token-refresh.processor";
 import { MediaProcessProcessor } from "./media-process.processor";
+import { PrismaService } from "../prisma.service";
+import { JobRecorder } from "../job-recorder.service";
+import { S3Service } from "../s3.service";
+import { metaProviders } from "../meta.factory";
 
 @Module({
   imports: [
@@ -16,6 +20,10 @@ import { MediaProcessProcessor } from "./media-process.processor";
     ),
   ],
   providers: [
+    PrismaService,
+    JobRecorder,
+    S3Service,
+    ...metaProviders,
     PublishPostProcessor,
     PublishCommentProcessor,
     TokenRefreshProcessor,

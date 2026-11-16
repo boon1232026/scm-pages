@@ -13,6 +13,13 @@ import { ActivityLogModule } from "./activity-log/activity-log.module";
 import { MetaModule } from "./meta/meta.module";
 import { SocialAccountsModule } from "./social-accounts/social-accounts.module";
 import { PagesModule } from "./pages/pages.module";
+import { QueueModule } from "./queue/queue.module";
+import { MediaModule } from "./media/media.module";
+import { PostsModule } from "./posts/posts.module";
+import { CommentsModule } from "./comments/comments.module";
+import { ScheduledJobsModule } from "./scheduled-jobs/scheduled-jobs.module";
+import { TemplatesModule } from "./templates/templates.module";
+import { ConfigurationsModule } from "./configurations/configurations.module";
 
 @Module({
   imports: [
@@ -31,6 +38,13 @@ import { PagesModule } from "./pages/pages.module";
     MetaModule,
     SocialAccountsModule,
     PagesModule,
+    QueueModule,
+    MediaModule,
+    PostsModule,
+    CommentsModule,
+    ScheduledJobsModule,
+    TemplatesModule,
+    ConfigurationsModule,
   ],
   controllers: [HealthController],
   providers: [

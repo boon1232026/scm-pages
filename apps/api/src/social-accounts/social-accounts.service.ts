@@ -43,7 +43,14 @@ export class SocialAccountsService {
     };
     const signed = this.jwt.sign(state as object, { expiresIn: "10m" });
     const cb = redirectUri ?? this.config.get("META_OAUTH_REDIRECT_URI");
-    return { oauthUrl: this.meta.buildOAuthUrl(cb!, signed), state: signed };
+    const scopes = [
+      "pages_show_list",
+      "pages_read_engagement",
+      "pages_manage_posts",
+      "pages_manage_engagement",
+      "business_management",
+    ];
+    return { oauthUrl: this.meta.buildOAuthUrl(cb!, signed, scopes), state: signed };
   }
 
   async completeOAuth(code: string, signedState: string) {
