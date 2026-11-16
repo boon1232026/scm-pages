@@ -10,6 +10,9 @@ import { AuthModule } from "./auth/auth.module";
 import { UsersModule } from "./users/users.module";
 import { WorkspacesModule } from "./workspaces/workspaces.module";
 import { ActivityLogModule } from "./activity-log/activity-log.module";
+import { MetaModule } from "./meta/meta.module";
+import { SocialAccountsModule } from "./social-accounts/social-accounts.module";
+import { PagesModule } from "./pages/pages.module";
 
 @Module({
   imports: [
@@ -25,6 +28,9 @@ import { ActivityLogModule } from "./activity-log/activity-log.module";
     UsersModule,
     WorkspacesModule,
     ActivityLogModule,
+    MetaModule,
+    SocialAccountsModule,
+    PagesModule,
   ],
   controllers: [HealthController],
   providers: [
