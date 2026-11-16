@@ -59,6 +59,21 @@ export class MetaOAuthController {
     }
   }
 
+  /** Public: landing page after OAuth — shown when DESKTOP_OAUTH_*_URL points here (dev). */
+  @Get("done")
+  done(@Res() res: Response) {
+    res.setHeader("content-type", "text/html; charset=utf-8");
+    res.send(
+      `<!doctype html><meta charset="utf-8"><title>Connected</title>
+       <body style="font-family:system-ui;background:#0f1115;color:#e6e9ef;display:grid;place-items:center;height:100vh;margin:0">
+       <div style="text-align:center"><h2 id="t">Facebook connected</h2>
+       <p style="color:#8b93a3" id="m">You can close this tab and go back to Social Commerce Manager.</p></div>
+       <script>var e=new URLSearchParams(location.search).get("error");
+       if(e){document.getElementById("t").textContent="Connection failed";
+       document.getElementById("m").textContent="Error: "+e+" — go back and press Connect Facebook again."}</script></body>`,
+    );
+  }
+
   /** Authed alternative: desktop submits {code,state} instead of the redirect flow. */
   @Post("exchange")
   @ApiBearerAuth()

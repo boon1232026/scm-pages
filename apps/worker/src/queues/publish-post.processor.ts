@@ -1,6 +1,6 @@
-import { Processor, WorkerHost } from "@nestjs/bullmq";
+import { InjectQueue, Processor, WorkerHost } from "@nestjs/bullmq";
 import { Inject, Logger } from "@nestjs/common";
-import type { Job } from "bullmq";
+import type { Job, Queue } from "bullmq";
 import { MetaApiError, MetaClient, TokenCrypto } from "@scm/meta";
 import { QUEUE_NAMES } from "./queue-names";
 import { PrismaService } from "../prisma.service";
@@ -29,6 +29,7 @@ export class PublishPostProcessor extends WorkerHost {
     private readonly recorder: JobRecorder,
     @Inject(META_CLIENT) private readonly meta: MetaClient,
     @Inject(TOKEN_CRYPTO) private readonly crypto: TokenCrypto,
+    @InjectQueue(QUEUE_NAMES.publishComment) private readonly commentQueue: Queue,
   ) {
     super();
   }
@@ -118,6 +119,7 @@ export class PublishPostProcessor extends WorkerHost {
         }),
       ]);
       await this.recomputePostStatus(pp.postId);
+      await this.enqueueFirstComment(pp, fbPostId);
       await this.recorder.attemptSuccess(scheduledJob?.id, attemptNo, metaResponse);
       this.logger.log(`published post ${pp.postId} -> page ${pageId} as ${fbPostId}`);
     } catch (e) {
@@ -159,6 +161,54 @@ export class PublishPostProcessor extends WorkerHost {
       where: { id: postId },
       data: { status, ...(status === "published" && { publishedAt: new Date() }), ...(done && status === "failed" ? {} : {}) },
     });
+  }
+
+  /**
+   * First-comments flow: after a post lands on a page, queue every configured
+   * comment against that page's new fbPostId (FB allows 1 image per comment —
+   * multi-image = multi comments). Idempotent via fc-{postPageId}-{i} keys.
+   */
+  private async enqueueFirstComment(
+    pp: { id: string; postId: string; socialPageId: string; post: { workspaceId: string; createdBy: string; firstComments: unknown; commentDelaySec: number | null } },
+    fbPostId: string,
+  ) {
+    const items = Array.isArray(pp.post.firstComments)
+      ? (pp.post.firstComments as { body?: string | null; mediaId?: string | null }[])
+      : [];
+    for (const [i, c] of items.entries()) {
+      if (!c.body && !c.mediaId) continue;
+      const idem = `fc-${pp.id}-${i}`;
+      const existing = await this.prisma.comment.findFirst({
+        where: { workspaceId: pp.post.workspaceId, idempotencyKey: idem },
+      });
+      if (existing) continue;
+      const comment = await this.prisma.comment.create({
+        data: {
+          workspaceId: pp.post.workspaceId,
+          socialPageId: pp.socialPageId,
+          postId: pp.postId,
+          fbTargetId: fbPostId,
+          body: c.body ?? null,
+          mediaAssetId: c.mediaId ?? null,
+          idempotencyKey: idem,
+          status: "queued",
+          createdBy: pp.post.createdBy,
+        },
+      });
+      await this.commentQueue.add(
+        "publish",
+        { commentId: comment.id, workspaceId: pp.post.workspaceId },
+        {
+          jobId: `cm-${comment.id}`,
+          delay: Math.max(0, (pp.post.commentDelaySec ?? 0) * 1000) * i,
+          attempts: 3,
+          backoff: { type: "exponential", delay: 15_000 },
+          removeOnComplete: 100,
+          removeOnFail: 500,
+        },
+      );
+      this.logger.log(`queued first-comment ${comment.id} on ${fbPostId} (delay ${Math.max(0, (pp.post.commentDelaySec ?? 0) * 1000) * i}ms)`);
+    }
   }
 
   private describeError(e: unknown): { message: string; code?: number; subcode?: number; retriable: boolean } {

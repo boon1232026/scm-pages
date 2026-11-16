@@ -467,6 +467,8 @@ model Post {
   kind           PostKind
   body           String
   linkUrl        String?    @map("link_url")
+  firstComments  Json?      @map("first_comments")
+  commentDelaySec Int       @default(0) @map("comment_delay_sec")
   idempotencyKey String?    @map("idempotency_key")
   status         PostStatus @default(draft)
   scheduledAt    DateTime?  @map("scheduled_at")

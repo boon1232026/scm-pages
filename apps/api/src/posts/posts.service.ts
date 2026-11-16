@@ -47,7 +47,10 @@ export class PostsService {
         message: `Pages not enabled for publishing: ${disabled.map((p) => p.name).join(", ")}`,
       });
     }
-    await this.media.assertReadyForUse(workspaceId, input.mediaIds);
+    await this.media.assertReadyForUse(workspaceId, [
+      ...input.mediaIds,
+      ...(input.firstComments ?? []).flatMap((c) => (c.mediaId ? [c.mediaId] : [])),
+    ]);
 
     const status = runAt ? "scheduled" : "queued";
     const post = await this.prisma.$transaction(async (tx) => {
@@ -58,6 +61,8 @@ export class PostsService {
           kind: input.kind,
           body: input.body,
           linkUrl: input.linkUrl ?? null,
+          firstComments: input.firstComments?.length ? input.firstComments : undefined,
+          commentDelaySec: input.commentDelaySeconds ?? 0,
           idempotencyKey: input.idempotencyKey ?? null,
           status,
           scheduledAt: runAt,
@@ -142,9 +147,7 @@ export class PostsService {
       throw new BadRequestException({ code: "VALIDATION_FAILED", message: "No failed page jobs to retry" });
     }
     for (const pp of failed) {
-      // deterministic new jobId so BullMQ accepts the retry even if old id lingers
-      const jobId = `pp-${pp.id}-r${pp.attemptCount}`;
-      const job = await this.prisma.$transaction(async (tx) => {
+      await this.prisma.$transaction(async (tx) => {
         await tx.postPage.update({
           where: { id: pp.id },
           data: { status: "queued", lastError: Prisma.JsonNull },
@@ -153,6 +156,7 @@ export class PostsService {
           workspaceId,
           postId: post.id,
           postPageId: pp.id,
+          jobIdSuffix: `-r${pp.attemptCount}`,
         });
         await tx.scheduledJob.create({
           data: {
@@ -167,8 +171,6 @@ export class PostsService {
         });
         return queueJobId;
       });
-      void job;
-      void jobId;
     }
     await this.prisma.post.update({ where: { id: post.id }, data: { status: "queued" } });
     void this.log.log({
@@ -217,6 +219,8 @@ export class PostsService {
   private toDto(p: {
     id: string; kind: string; body: string; status: string; scheduledAt: Date | null;
     publishedAt: Date | null; createdAt: Date;
+    firstComments: unknown;
+    commentDelaySec: number | null;
     media: { mediaAssetId: string; position: number }[];
     pages: ({
       socialPageId: string; bodyOverride: string | null; fbPostId: string | null;
@@ -232,6 +236,8 @@ export class PostsService {
       scheduledAt: p.scheduledAt?.toISOString() ?? null,
       publishedAt: p.publishedAt?.toISOString() ?? null,
       createdAt: p.createdAt.toISOString(),
+      firstComments: (p.firstComments as { body: string | null; mediaId: string | null }[] | null) ?? [],
+      commentDelaySec: p.commentDelaySec ?? 0,
       mediaIds: [...p.media].sort((a, b) => a.position - b.position).map((m) => m.mediaAssetId),
       pages: p.pages.map(
         (pp): PostPage => ({

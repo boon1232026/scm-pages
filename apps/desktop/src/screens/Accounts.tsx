@@ -1,4 +1,5 @@
 import { useState } from "react";
+import { openUrl } from "@tauri-apps/plugin-opener";
 import { api } from "../lib/api";
 import { Err, fmtDate, StatusBadge, useQuery } from "../lib/hooks";
 
@@ -11,9 +12,13 @@ export default function Accounts() {
     setBusy(true);
     setMsg(null);
     try {
-      const r = await api.startMetaOAuth(`${window.location.origin}/oauth/callback`);
-      // Real OAuth URL from the backend — open in the system browser.
-      window.open(r.oauthUrl, "_blank");
+      const r = await api.startMetaOAuth();
+      // Real OAuth URL from the backend — open in the SYSTEM browser via Tauri.
+      try {
+        await openUrl(r.oauthUrl);
+      } catch {
+        window.open(r.oauthUrl, "_blank");
+      }
       setMsg("Complete the Meta login in your browser, then resync this account.");
     } catch (e) {
       setMsg(e instanceof Error ? e.message : String(e));

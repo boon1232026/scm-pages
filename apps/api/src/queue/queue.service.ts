@@ -28,14 +28,16 @@ export class QueueService {
     private readonly prisma: PrismaService,
   ) {}
 
-  /** One BullMQ job per (post,page). `runAt` schedules it; jobId dedupes double submits. */
+  /** One BullMQ job per (post,page). `runAt` schedules it; jobId dedupes double submits.
+   *  `jobIdSuffix` lets retries mint a fresh id — BullMQ ignores re-adds of completed jobIds. */
   async enqueuePostPage(args: {
     workspaceId: string;
     postId: string;
     postPageId: string;
     runAt?: Date | null;
+    jobIdSuffix?: string;
   }): Promise<{ queueJobId: string }> {
-    const jobId = `pp-${args.postPageId}`.replace(/:/g, "-");
+    const jobId = `pp-${args.postPageId}${args.jobIdSuffix ?? ""}`.replace(/:/g, "-");
     const delay = args.runAt ? Math.max(0, args.runAt.getTime() - Date.now()) : 0;
     const job = await this.postQueue.add(
       "publish",

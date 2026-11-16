@@ -55,7 +55,8 @@ export class SocialCommerceClient {
 
   constructor(private readonly opts: SdkOptions) {
     this.baseUrl = opts.baseUrl.replace(/\/$/, "") + API_PREFIX;
-    this.fetchImpl = opts.fetchImpl ?? fetch;
+    // WKWebView (Tauri) requires fetch to keep its `window` receiver — bind it.
+    this.fetchImpl = opts.fetchImpl ?? fetch.bind(globalThis);
   }
 
   private async request<T>(
@@ -130,8 +131,8 @@ export class SocialCommerceClient {
       { refreshToken },
     );
   logout = (refreshToken: string) => this.post<void>(Routes.auth.logout, { refreshToken });
-  startMetaOAuth = (redirectUri: string) =>
-    this.get<{ oauthUrl: string; state: string }>(Routes.auth.metaStart, { redirectUri });
+  startMetaOAuth = (redirectUri?: string) =>
+    this.get<{ oauthUrl: string; state: string }>(Routes.auth.metaStart, redirectUri ? { redirectUri } : {});
   exchangeMetaCode = (code: string, state: string) =>
     this.post<SocialAccount>(Routes.auth.metaExchange, { code, state });
 

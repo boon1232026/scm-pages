@@ -187,7 +187,16 @@ export const createPostSchema = z
     pageIds: z.array(uuid).min(1).max(200),
     mediaIds: z.array(uuid).max(10).default([]),
     linkUrl: z.string().url().max(2048).optional(),
+    firstComments: z
+      .array(
+        z
+          .object({ body: z.string().max(8000).optional(), mediaId: uuid.optional() })
+          .refine((v) => v.body || v.mediaId, { message: "each comment requires body or mediaId" }),
+      )
+      .max(20)
+      .optional(),
     pageOverrides: z.record(uuid, z.string().max(63206)).optional(),
+    commentDelaySeconds: z.number().int().min(0).max(86400).optional(),
     scheduledAt: isoDateTime.optional(),
     timezone: z.string().default("Asia/Bangkok"),
     idempotencyKey: z.string().min(8).max(120).optional(),
@@ -229,6 +238,8 @@ export const postSchema = z.object({
   scheduledAt: isoDateTime.nullable(),
   publishedAt: isoDateTime.nullable(),
   createdAt: isoDateTime,
+  firstComments: z.array(z.object({ body: z.string().nullable(), mediaId: uuid.nullable() })),
+  commentDelaySec: z.number().int().nullable(),
   mediaIds: z.array(uuid),
   pages: z.array(postPageSchema),
 });

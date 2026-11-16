@@ -17,6 +17,7 @@
     "@scm/contracts": "workspace:*",
     "@scm/sdk": "workspace:*",
     "@tauri-apps/api": "^2.2.0",
+    "@tauri-apps/plugin-opener": "^2.7.3",
     "react": "^18.3.1",
     "react-dom": "^18.3.1",
     "react-router-dom": "^7.1.1"

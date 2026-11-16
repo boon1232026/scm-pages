@@ -33,7 +33,7 @@ export class SocialAccountsService {
 
   // ---------- OAuth ----------
 
-  startOAuth(userId: string, workspaceId: string, redirectUri?: string) {
+  startOAuth(userId: string, workspaceId: string, _redirectUri?: string) {
     this.assertMetaConfigured();
     const state: OAuthState = {
       sub: userId,
@@ -42,7 +42,9 @@ export class SocialAccountsService {
       nonce: crypto.randomUUID(),
     };
     const signed = this.jwt.sign(state as object, { expiresIn: "10m" });
-    const cb = redirectUri ?? this.config.get("META_OAUTH_REDIRECT_URI");
+    // Always the server-registered callback — client-supplied redirects are ignored
+    // (redirect_uri must exactly match the value used at token exchange).
+    const cb = this.config.get("META_OAUTH_REDIRECT_URI");
     const scopes = [
       "pages_show_list",
       "pages_read_engagement",

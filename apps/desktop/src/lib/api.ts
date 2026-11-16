@@ -82,7 +82,7 @@ export interface HealthResponse {
 }
 
 export async function fetchHealth(): Promise<HealthResponse> {
-  const res = await fetch(`${API_BASE_URL}/api/v1/health`);
+  const res = await globalThis.fetch(`${API_BASE_URL}/api/v1/health`);
   if (!res.ok) throw new Error(`HTTP ${res.status}`);
   return res.json() as Promise<HealthResponse>;
 }
