@@ -209,7 +209,7 @@ export default function CommentPost() {
   const pendingMedia = Object.values(rows)
     .flatMap((r) => r.mediaIds)
     .some((id) => byId.get(id)?.status !== "ready");
-  const canSubmit = !!pageId && !!post && comments.length > 0 && comments.length <= 80 && uploading === null && !pendingMedia;
+  const canSubmit = !!pageId && !!post && comments.length > 0 && uploading === null && !pendingMedia;
 
   async function submit() {
     setBusy(true);
@@ -458,11 +458,9 @@ export default function CommentPost() {
                 ? "รอประมวลผลรูปให้พร้อมก่อนส่ง"
                 : uploading !== null
                   ? "กำลังอัปโหลดรูป…"
-                  : comments.length > 80
-                    ? `คอมเมนต์เกิน 80 รายการ (ตอนนี้ ${comments.length})`
-                    : comments.length === 0
-                      ? "พิมพ์ข้อความหรือแนบรูปอย่างน้อย 1 คอมเมนต์"
-                      : "ส่งทันที ทยอยตาม delay"}
+                  : comments.length === 0
+                    ? "พิมพ์ข้อความหรือแนบรูปอย่างน้อย 1 คอมเมนต์"
+                    : "ส่งทันที ทยอยตาม delay"}
             </div>
           </div>
           <button className="btn-primary" disabled={busy || !canSubmit} onClick={submit}>

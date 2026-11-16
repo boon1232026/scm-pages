@@ -197,7 +197,7 @@ export const createPostSchema = z
           })
           .refine((v) => v.body || v.mediaId, { message: "each comment requires body or mediaId" }),
       )
-      .max(80)
+      .max(500)
       .optional(),
     pageOverrides: z.record(uuid, z.string().max(63206)).optional(),
     commentDelaySeconds: z.number().int().min(0).max(86400).optional(),
@@ -292,7 +292,7 @@ export const createCommentBatchSchema = z.object({
   comments: z
     .array(createCommentObject.omit({ scheduledAt: true }).refine((v) => v.body || v.mediaId, { message: "body or mediaId required" }))
     .min(1)
-    .max(80),
+    .max(500),
   staggerSeconds: z.number().int().min(0).max(3600).default(0),
   idempotencyKey: z.string().min(8).max(120).optional(),
 });

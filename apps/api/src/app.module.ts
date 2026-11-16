@@ -29,7 +29,7 @@ import { ConfigurationsModule } from "./configurations/configurations.module";
       validate: validateEnv,
       envFilePath: [".env", "../../.env"],
     }),
-    ThrottlerModule.forRoot([{ ttl: 60_000, limit: 100 }]),
+    ThrottlerModule.forRoot([{ ttl: 60_000, limit: 1000 }]),
     PrismaModule,
     AuthModule,
     UsersModule,
