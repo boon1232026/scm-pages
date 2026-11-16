@@ -4,6 +4,9 @@ on:
   workflow_dispatch:
   push: { tags: ["v*"] }
 
+permissions:
+  contents: write
+
 jobs:
   build-nsis:
     runs-on: windows-latest
@@ -32,6 +35,7 @@ jobs:
         uses: tauri-apps/tauri-action@v0
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          VITE_API_BASE_URL: ${{ vars.API_BASE_URL || 'https://scm-api.167-71-220-250.sslip.io' }}
         with:
           projectPath: apps/desktop
           tagName: ${{ github.ref_name }}
