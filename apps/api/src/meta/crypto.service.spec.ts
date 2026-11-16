@@ -21,7 +21,7 @@ describe("TokenCryptoService (AES-256-GCM)", () => {
 
   it("detects tampering (GCM auth tag)", () => {
     const blob = svc.encrypt("secret-token");
-    blob[40] ^= 0xff;
+    blob[blob.length - 1] ^= 0xff;
     expect(() => svc.decrypt(blob)).toThrow();
   });
 });
