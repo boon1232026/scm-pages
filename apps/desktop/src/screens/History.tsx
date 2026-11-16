@@ -121,6 +121,7 @@ export default function History() {
   const mediaById = new Map((media.data?.items ?? []).map((m) => [m.id, m]));
   const [open, setOpen] = useState<string | null>(null);
   const [fStatus, setFStatus] = useState("all");
+  const [fPage, setFPage] = useState("all");
   const [fFrom, setFFrom] = useState("");
   const [fTo, setFTo] = useState("");
   const [fText, setFText] = useState("");
@@ -135,12 +136,14 @@ export default function History() {
 
   const items = (posts.data?.items ?? []).filter((p) => {
     if (fStatus !== "all" && p.status !== fStatus) return false;
+    if (fPage !== "all" && !p.pages.some((pg) => pg.socialPageId === fPage)) return false;
     const day = (p.publishedAt ?? p.scheduledAt ?? p.createdAt).slice(0, 10);
     if (fFrom && day < fFrom) return false;
     if (fTo && day > fTo) return false;
     if (fText && !p.body.toLowerCase().includes(fText.toLowerCase())) return false;
     return true;
   });
+  const extEntries = [...extGroups.entries()].filter(([, cs]) => fPage === "all" || cs[0]!.socialPageId === fPage);
 
   return (
     <>
@@ -158,12 +161,18 @@ export default function History() {
             <option value="queued">queued</option>
             <option value="cancelled">cancelled</option>
           </select>
+          <select value={fPage} onChange={(e) => setFPage(e.target.value)} title="กรองตามเพจ">
+            <option value="all">ทุกเพจ</option>
+            {(allPages.data ?? []).map((pg) => (
+              <option key={pg.id} value={pg.id}>{pg.name}</option>
+            ))}
+          </select>
           <input type="date" value={fFrom} onChange={(e) => setFFrom(e.target.value)} title="จากวันที่" />
           <span className="muted">–</span>
           <input type="date" value={fTo} onChange={(e) => setFTo(e.target.value)} title="ถึงวันที่" />
           <input type="search" placeholder="ค้นหาข้อความโพสต์…" value={fText} onChange={(e) => setFText(e.target.value)} style={{ flex: 1, minWidth: 140 }} />
-          {(fStatus !== "all" || fFrom || fTo || fText) && (
-            <button className="link" onClick={() => { setFStatus("all"); setFFrom(""); setFTo(""); setFText(""); }}>ล้าง</button>
+          {(fStatus !== "all" || fPage !== "all" || fFrom || fTo || fText) && (
+            <button className="link" onClick={() => { setFStatus("all"); setFPage("all"); setFFrom(""); setFTo(""); setFText(""); }}>ล้าง</button>
           )}
         </div>
         {posts.loading ? (
@@ -202,10 +211,10 @@ export default function History() {
                     <div className="hrow-title">{p.body.slice(0, 160) || "(ไม่มีข้อความ)"}</div>
                     <div className="hrow-meta">
                       <span className="badge">{p.kind}</span>
+                      <span className="hrow-pages">{p.pages.map((pg) => pg.pageName).join(", ")}</span>
                       <span>{fmtDate(p.scheduledAt ?? p.createdAt)}</span>
                       {p.mediaIds.length > 0 && <span>◫ {p.mediaIds.length} รูป</span>}
                       <span>✱ {postComments.length} คอมเมนต์</span>
-                      <span>▦ {p.pages.length} เพจ</span>
                     </div>
                   </div>
                   <div className="hrow-side">
@@ -317,10 +326,10 @@ export default function History() {
           })
         )}
       </div>
-      {extGroups.size ? (
+      {extEntries.length ? (
         <div className="card">
           <h3>คอมเมนต์โพสต์เก่า</h3>
-          {[...extGroups.entries()].map(([fbPostId, cs]) => (
+          {extEntries.map(([fbPostId, cs]) => (
             <ExternalPostGroup
               key={fbPostId}
               fbPostId={fbPostId}
