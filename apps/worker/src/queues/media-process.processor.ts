@@ -1,6 +1,6 @@
-import { Processor, WorkerHost } from "@nestjs/bullmq";
-import { Logger } from "@nestjs/common";
-import type { Job } from "bullmq";
+import { InjectQueue, Processor, WorkerHost } from "@nestjs/bullmq";
+import { Logger, type OnModuleInit } from "@nestjs/common";
+import { Queue, type Job } from "bullmq";
 import sharp from "sharp";
 import { QUEUE_NAMES } from "./queue-names";
 import { PrismaService } from "../prisma.service";
@@ -20,14 +20,27 @@ const THUMB_EDGE = 320;
  * thumbnail, fill width/height, status -> ready. Failures -> status failed.
  */
 @Processor(QUEUE_NAMES.mediaProcess)
-export class MediaProcessProcessor extends WorkerHost {
+export class MediaProcessProcessor extends WorkerHost implements OnModuleInit {
   private readonly logger = new Logger(MediaProcessProcessor.name);
 
   constructor(
     private readonly prisma: PrismaService,
     private readonly s3: S3Service,
+    @InjectQueue(QUEUE_NAMES.mediaProcess) private readonly queue: Queue<MediaProcessJobData>,
   ) {
     super();
+  }
+
+  /** Re-enqueue assets stuck in `processing` (jobs lost on worker restart). */
+  async onModuleInit() {
+    const stale = await this.prisma.mediaAsset.findMany({
+      where: { status: "processing", updatedAt: { lt: new Date(Date.now() - 2 * 60_000) } },
+      select: { id: true, workspaceId: true },
+    });
+    for (const m of stale) {
+      await this.queue.add("process", { mediaId: m.id, workspaceId: m.workspaceId });
+    }
+    if (stale.length) this.logger.warn(`re-enqueued ${stale.length} stuck media asset(s)`);
   }
 
   async process(job: Job<MediaProcessJobData>): Promise<void> {
