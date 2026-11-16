@@ -12,9 +12,12 @@ export default function Dashboard() {
   const pages = useQuery(() => (authed ? api.listPages() : Promise.resolve(null)), [authed]);
   const workspaces = useQuery(() => (authed ? api.listWorkspaces() : Promise.resolve(null)), [authed]);
   const media = useQuery(() => (authed ? api.listMedia() : Promise.resolve(null)), [authed]);
+  const queuedComments = useQuery(() => (authed ? api.listComments({ status: "queued" }) : Promise.resolve(null)), [authed]);
 
   useEffect(() => {
-    const load = () =>
+    queuedComments.refetch();
+    const load = () => {
+      queuedComments.refetch();
       fetchHealth()
         .then((h) => {
           setHealth(h);
@@ -24,6 +27,7 @@ export default function Dashboard() {
           setHealth(null);
           setHealthErr(e.message);
         });
+    };
     load();
     const t = setInterval(load, 15_000);
     return () => clearInterval(t);
@@ -41,7 +45,8 @@ export default function Dashboard() {
   }, {});
   const published = stats.published ?? 0;
   const failed = (stats.failed ?? 0) + (stats.partial ?? 0);
-  const inFlight = (stats.queued ?? 0) + (stats.publishing ?? 0) + (stats.scheduled ?? 0);
+  const queuedCommentCount = queuedComments.data?.items.length ?? 0;
+  const inFlight = (stats.queued ?? 0) + (stats.publishing ?? 0) + (stats.scheduled ?? 0) + queuedCommentCount;
   const enabledPages = (pages.data ?? []).filter((p) => p.isEnabled);
   const mediaById = new Map((media.data?.items ?? []).map((m) => [m.id, m]));
   const recent = items.slice(0, 6);

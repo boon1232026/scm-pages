@@ -407,6 +407,7 @@ export default function Compose() {
                             return (
                               <div key={cid} className="media-cell on detail-thumb">
                                 <img src={cm?.thumbnailUrl ?? cm?.url} alt="comment" />
+                                {cm && cm.status !== "ready" && <StatusBadge status={cm.status} />}
                                 <button className="media-del" style={{ opacity: 1 }} title="เอารูปคอมเมนต์ออก" onClick={() => setDetail(id, { mediaIds: detail.mediaIds.filter((x) => x !== cid) })}>✕</button>
                               </div>
                             );
@@ -576,7 +577,17 @@ export default function Compose() {
             <div className="summary">
               <strong>{summary}</strong>
               <div className="muted" style={{ fontSize: 12, marginTop: 2 }}>
-                Publishes immediately
+                {!selected.size
+                  ? "เลือกเพจอย่างน้อย 1 เพจ"
+                  : pendingMedia
+                    ? "รอประมวลผลรูปให้พร้อมก่อนเผยแพร่ — ดู badge บนรูป"
+                    : uploading !== null || batchActive
+                      ? "กำลังอัปโหลดรูป…"
+                      : draftComments.some((c) => c.uploadState === "failed")
+                        ? "มีรูปคอมเมนต์อัปโหลดไม่สำเร็จ — ลบหรือเลือกใหม่"
+                        : commentCount > 20
+                          ? `คอมเมนต์เกิน 20 รายการ (ตอนนี้ ${commentCount})`
+                          : "Publishes immediately"}
               </div>
             </div>
             <div className="row" style={{ margin: 0, alignItems: "center" }}>
