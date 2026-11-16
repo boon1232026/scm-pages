@@ -63,10 +63,11 @@ export interface ObjectComment {
 }
 
 interface GraphAttachment {
+  id?: string;
   type?: string;
   media?: { image?: { src?: string } };
   target?: { id?: string };
-  subattachments?: { data?: GraphAttachment[] };
+  subattachments?: { data?: GraphAttachment[]; paging?: { cursors?: { after?: string }; next?: string } };
 }
 
 export interface GraphPost {
@@ -175,18 +176,31 @@ export class MetaClient {
     pageToken: string,
   ): Promise<{ post: PageFeedItem; photos: PostPhoto[] }> {
     const res = await this.get<PageFeedItem & { attachments?: { data?: GraphAttachment[] } }>(`/${postId}`, {
-      fields: "id,message,created_time,permalink_url,full_picture,attachments{media,type,subattachments{media,target,type}}",
+      fields: "id,message,created_time,permalink_url,full_picture,attachments{id,media,type,subattachments.limit(100){media,target,type}}",
       access_token: pageToken,
     });
     const out: PostPhoto[] = [];
+    const pushSub = (s: GraphAttachment) => {
+      if (s.target?.id) out.push({ fbPhotoId: s.target.id, imageUrl: s.media?.image?.src ?? null });
+    };
     for (const att of res.attachments?.data ?? []) {
       const subs = att.subattachments?.data;
       if (subs?.length) {
-        for (const s of subs) {
-          if (s.target?.id) out.push({ fbPhotoId: s.target.id, imageUrl: s.media?.image?.src ?? null });
+        subs.forEach(pushSub);
+        // subattachments paginates like any connection — fetch remaining pages (>100 photos)
+        if (att.subattachments?.paging?.next && att.id) {
+          let after = att.subattachments.paging.cursors?.after;
+          for (let i = 0; i < 8 && after; i++) {
+            const more = await this.get<{ data?: GraphAttachment[]; paging?: { cursors?: { after?: string }; next?: string } }>(
+              `/${att.id}/subattachments`,
+              { fields: "media,target,type", limit: "100", access_token: pageToken, after },
+            );
+            (more.data ?? []).forEach(pushSub);
+            after = more.paging?.next ? more.paging.cursors?.after : undefined;
+          }
         }
       } else if (att.target?.id) {
-        out.push({ fbPhotoId: att.target.id, imageUrl: att.media?.image?.src ?? null });
+        pushSub(att);
       }
     }
     const { attachments: _a, ...post } = res;
