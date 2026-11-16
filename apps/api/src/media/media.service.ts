@@ -56,11 +56,25 @@ export class MediaService implements OnModuleInit {
     };
   }
 
-  /** Called after the client PUTs bytes to S3 — enqueue Sharp processing. */
+  /**
+   * Called after the client PUTs bytes to S3. Verifies the object exists, marks
+   * the asset ready immediately (publish no longer waits on the worker), then
+   * enqueues background normalization + thumbnail generation.
+   */
   async complete(workspaceId: string, mediaId: string) {
     const asset = await this.findInWorkspace(workspaceId, mediaId);
+    try {
+      await this.s3.head(asset.storageKey);
+    } catch {
+      await this.prisma.mediaAsset.update({ where: { id: asset.id }, data: { status: "failed" } });
+      throw new NotFoundException("upload incomplete — file not found in storage, please attach again");
+    }
+    const ready = await this.prisma.mediaAsset.update({
+      where: { id: asset.id },
+      data: { status: "ready" },
+    });
     await this.queue.enqueueMediaProcess({ mediaId: asset.id, workspaceId });
-    return this.toDto(asset);
+    return this.toDto(ready);
   }
 
   async list(workspaceId: string, q?: { category?: string; search?: string; cursor?: string; productId?: string }) {

@@ -4,6 +4,7 @@ import {
   CreateBucketCommand,
   DeleteObjectCommand,
   HeadBucketCommand,
+  HeadObjectCommand,
   PutObjectCommand,
   S3Client,
 } from "@aws-sdk/client-s3";
@@ -58,6 +59,11 @@ export class S3Service {
     if (this.publicUrl) return `${this.publicUrl.replace(/\/$/, "")}/${key}`;
     const endpoint = (this.client.config.endpoint as unknown as { toString(): string }).toString().replace(/\/$/, "");
     return `${endpoint}/${this.bucket}/${key}`;
+  }
+
+  /** Throws if the object does not exist in the bucket. */
+  async head(key: string): Promise<void> {
+    await this.client.send(new HeadObjectCommand({ Bucket: this.bucket, Key: key }));
   }
 
   async remove(key: string): Promise<void> {

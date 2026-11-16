@@ -15,9 +15,9 @@ const MAX_EDGE = 2048; // Facebook-friendly max dimension
 const THUMB_EDGE = 320;
 
 /**
- * Validates + normalizes an uploaded image:
- * re-encode (strips polyglot payloads), cap at 2048px, generate a 320px webp
- * thumbnail, fill width/height, status -> ready. Failures -> status failed.
+ * Background post-upload enhancement (assets are marked ready at upload
+ * complete time): re-encode (strips polyglot payloads), cap at 2048px,
+ * generate a 320px webp thumbnail, fill width/height. Failures -> status failed.
  */
 @Processor(QUEUE_NAMES.mediaProcess, { concurrency: 6 })
 export class MediaProcessProcessor extends WorkerHost implements OnModuleInit {
@@ -50,7 +50,7 @@ export class MediaProcessProcessor extends WorkerHost implements OnModuleInit {
       this.logger.warn(`media ${mediaId} gone — dropping job`);
       return;
     }
-    if (asset.status === "ready") return; // idempotent
+    if (asset.thumbnailUrl) return; // already normalized — idempotent
 
     try {
       const raw = await this.s3.download(asset.storageKey);
