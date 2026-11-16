@@ -508,6 +508,7 @@ model PostPage {
   socialPageId  String         @map("social_page_id") @db.Uuid
   bodyOverride  String?        @map("body_override")
   fbPostId      String?        @map("fb_post_id")
+  photoIds      Json?          @map("photo_ids")
   status        PagePostStatus @default(queued)
   attemptCount  Int            @default(0) @map("attempt_count")
   lastError     Json?          @map("last_error")

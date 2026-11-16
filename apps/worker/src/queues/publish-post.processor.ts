@@ -50,6 +50,7 @@ export class PublishPostProcessor extends WorkerHost {
       return;
     }
     if (pp.status === "published") {
+      await this.enqueueFirstComment(pp, pp.fbPostId!, (pp.photoIds as Record<string, string> | null) ?? {});
       this.logger.log(`postPage ${postPageId} already published — idempotent skip`);
       await this.recorder.attemptSuccess(scheduledJob?.id, attemptNo, { skipped: true });
       return;
@@ -67,6 +68,7 @@ export class PublishPostProcessor extends WorkerHost {
 
       let metaResponse: object;
       let fbPostId: string;
+      const photoIds: Record<string, string> = {};
       switch (pp.post.kind) {
         case "text": {
           const params: Record<string, string> = { message };
@@ -81,6 +83,7 @@ export class PublishPostProcessor extends WorkerHost {
           if (!media) throw new Error("photo post has no media attached");
           const r = await this.meta.uploadPhoto(pageId, pageToken, media.url, true, message);
           fbPostId = r.post_id ?? r.id;
+          photoIds[media.id] = r.id;
           metaResponse = r as object;
           break;
         }
@@ -89,6 +92,7 @@ export class PublishPostProcessor extends WorkerHost {
           for (const pm of pp.post.media) {
             const up = await this.meta.uploadPhoto(pageId, pageToken, pm.mediaAsset.url, false);
             fbids.push(up.id);
+            photoIds[pm.mediaAssetId] = up.id;
           }
           const params: Record<string, string> = { message };
           fbids.forEach((id, i) => {
@@ -109,6 +113,7 @@ export class PublishPostProcessor extends WorkerHost {
           data: {
             status: "published",
             fbPostId,
+            photoIds,
             publishedAt: new Date(),
             attemptCount: { increment: 1 },
           },
@@ -119,10 +124,13 @@ export class PublishPostProcessor extends WorkerHost {
         }),
       ]);
       await this.recomputePostStatus(pp.postId);
-      await this.enqueueFirstComment(pp, fbPostId);
-      await this.recorder.attemptSuccess(scheduledJob?.id, attemptNo, metaResponse);
       this.logger.log(`published post ${pp.postId} -> page ${pageId} as ${fbPostId}`);
+      // Enqueue outside the publish catch so a queue outage cannot mark an already-live post as failed.
+      await this.enqueueFirstComment(pp, fbPostId, photoIds);
+      await this.recorder.attemptSuccess(scheduledJob?.id, attemptNo, metaResponse);
     } catch (e) {
+      const published = await this.prisma.postPage.findUnique({ where: { id: pp.id }, select: { status: true } });
+      if (published?.status === "published") throw e;
       const err = this.describeError(e);
       const final = !err.retriable || (job.attemptsMade ?? 0) + 1 >= (job.opts.attempts ?? 3);
       await this.prisma.postPage.update({
@@ -165,29 +173,32 @@ export class PublishPostProcessor extends WorkerHost {
 
   /**
    * First-comments flow: after a post lands on a page, queue every configured
-   * comment against that page's new fbPostId (FB allows 1 image per comment —
+   * comment against its selected photo or the page's new fbPostId (FB allows 1 image per comment —
    * multi-image = multi comments). Idempotent via fc-{postPageId}-{i} keys.
    */
   private async enqueueFirstComment(
     pp: { id: string; postId: string; socialPageId: string; post: { workspaceId: string; createdBy: string; firstComments: unknown; commentDelaySec: number | null } },
     fbPostId: string,
+    photoIds: Record<string, string>,
   ) {
     const items = Array.isArray(pp.post.firstComments)
-      ? (pp.post.firstComments as { body?: string | null; mediaId?: string | null }[])
+      ? (pp.post.firstComments as { body?: string | null; mediaId?: string | null; targetMediaId?: string | null }[])
       : [];
     for (const [i, c] of items.entries()) {
       if (!c.body && !c.mediaId) continue;
+      const targetId = c.targetMediaId ? photoIds[c.targetMediaId] : fbPostId;
+      if (!targetId) throw new Error(`Missing Facebook photo ID for product photo ${c.targetMediaId}`);
       const idem = `fc-${pp.id}-${i}`;
       const existing = await this.prisma.comment.findFirst({
         where: { workspaceId: pp.post.workspaceId, idempotencyKey: idem },
       });
-      if (existing) continue;
-      const comment = await this.prisma.comment.create({
+      if (existing && existing.status !== "queued") continue;
+      const comment = existing ?? await this.prisma.comment.create({
         data: {
           workspaceId: pp.post.workspaceId,
           socialPageId: pp.socialPageId,
           postId: pp.postId,
-          fbTargetId: fbPostId,
+          fbTargetId: targetId,
           body: c.body ?? null,
           mediaAssetId: c.mediaId ?? null,
           idempotencyKey: idem,
@@ -207,7 +218,7 @@ export class PublishPostProcessor extends WorkerHost {
           removeOnFail: 500,
         },
       );
-      this.logger.log(`queued first-comment ${comment.id} on ${fbPostId} (delay ${Math.max(0, (pp.post.commentDelaySec ?? 0) * 1000) * i}ms)`);
+      this.logger.log(`queued first-comment ${comment.id} on ${targetId} (delay ${Math.max(0, (pp.post.commentDelaySec ?? 0) * 1000) * i}ms)`);
     }
   }
 

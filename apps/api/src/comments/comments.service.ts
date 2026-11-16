@@ -145,13 +145,14 @@ export class CommentsService {
   }
 
   private toDto(c: {
-    id: string; socialPageId: string; fbTargetId: string; parentCommentId: string | null;
+    id: string; postId: string | null; socialPageId: string; fbTargetId: string; parentCommentId: string | null;
     body: string | null; mediaAssetId: string | null; fbCommentId: string | null;
     status: string; scheduledAt: Date | null; publishedAt: Date | null;
     lastError: unknown; createdAt: Date;
   }): Comment {
     return {
       id: c.id,
+      postId: c.postId,
       socialPageId: c.socialPageId,
       fbTargetId: c.fbTargetId,
       parentCommentId: c.parentCommentId,

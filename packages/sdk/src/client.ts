@@ -163,6 +163,7 @@ export class SocialCommerceClient {
   deleteMedia = (id: string) => this.del<void>(Routes.media.byId(id));
 
   // ---------- posts ----------
+  postCapabilities = () => this.get<{ photoComments: boolean }>(`${Routes.posts.root}/capabilities`);
   createPost = (b: CreatePostInput) => this.post<Post>(Routes.posts.root, b, b.idempotencyKey);
   getPost = (id: string) => this.get<Post>(Routes.posts.byId(id));
   listPosts = (q?: { status?: string; cursor?: string }) =>

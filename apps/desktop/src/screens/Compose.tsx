@@ -1,12 +1,41 @@
 import { useEffect, useRef, useState } from "react";
-import type { Post } from "@scm/contracts";
+import type { MediaAsset, Post } from "@scm/contracts";
 import { api } from "../lib/api";
 import { Err, fmtDate, StatusBadge, useQuery } from "../lib/hooks";
 
 /** Single workspace: compose post + first-comment in one pass, publish to all selected pages. */
+type DraftComment = {
+  id: string;
+  body: string;
+  mediaId: string | null;
+  targetMediaId: string | null;
+  fileName?: string | undefined;
+  uploadState?: "uploading" | "failed" | undefined;
+  uploadError?: string | undefined;
+};
+
+type ProductDetail = { body: string; mediaIds: string[]; uploadError: string | null };
+const emptyDetail: ProductDetail = { body: "", mediaIds: [], uploadError: null };
+
+async function loadMedia(): Promise<{ items: MediaAsset[] }> {
+  const items: MediaAsset[] = [];
+  let cursor: string | null = null;
+  for (let i = 0; i < 4; i++) {
+    const page = await api.listMedia(cursor ? { cursor } : undefined);
+    items.push(...page.items);
+    cursor = page.nextCursor;
+    if (!cursor) break;
+  }
+  return { items };
+}
+
+const newComment = (targetMediaId: string | null = null): DraftComment => ({
+  id: crypto.randomUUID(), body: "", mediaId: null, targetMediaId,
+});
+
 export default function Compose() {
   const pages = useQuery(() => api.listPages({ enabled: true }), []);
-  const media = useQuery(() => api.listMedia(), []);
+  const media = useQuery(loadMedia, []);
 
   const [selected, setSelected] = useState<Set<string>>(new Set());
   const [body, setBody] = useState("");
@@ -14,15 +43,23 @@ export default function Compose() {
 
   const [useFirstComment, setUseFirstComment] = useState(false);
   const [commentDelay, setCommentDelay] = useState(30);
-  const [draftComments, setDraftComments] = useState<{ body: string; mediaId: string | null }[]>([]);
+  const [draftComments, setDraftComments] = useState<DraftComment[]>([]);
+  const [productDetails, setProductDetails] = useState<Record<string, ProductDetail>>({});
+  const [batchActive, setBatchActive] = useState(false);
+  const [postDragOver, setPostDragOver] = useState(false);
+  const [detailDragOver, setDetailDragOver] = useState<string | null>(null);
+  const [queue, setQueue] = useState<{ done: number; total: number } | null>(null);
   const [trackPost, setTrackPost] = useState<Post | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
-  const [uploading, setUploading] = useState<"post" | number | null>(null);
+  const [uploading, setUploading] = useState<"post" | string | null>(null);
   const [showPostLib, setShowPostLib] = useState(false);
-  const [showCommentLib, setShowCommentLib] = useState<number | null>(null);
+  const [showCommentLib, setShowCommentLib] = useState<string | null>(null);
   const postFileRef = useRef<HTMLInputElement>(null);
-  const commentFileRefs = useRef<(HTMLInputElement | null)[]>([]);
+  const batchFileRef = useRef<HTMLInputElement>(null);
+  const detailImageRef = useRef<HTMLInputElement>(null);
+  const detailTargetRef = useRef<string>("");
+  const commentFileRefs = useRef<Record<string, HTMLInputElement | null>>({});
 
 
   const readyMedia = (media.data?.items ?? []).filter((m) => m.status === "ready");
@@ -39,10 +76,21 @@ export default function Compose() {
   const byId = new Map(items.map((m) => [m.id, m]));
   const attachedPost = mediaIds.map((id) => byId.get(id)).filter((m) => !!m);
 
-  async function upload(file: File, target: "post" | number) {
+  useEffect(() => {
+    const t = setInterval(() => {
+      if (mediaIds.some((id) => !byId.get(id) || byId.get(id)?.status === "processing") ||
+        draftComments.some((c) => c.mediaId && (!byId.get(c.mediaId) || byId.get(c.mediaId)?.status === "processing"))) {
+        media.refetch();
+      }
+    }, 3000);
+    return () => clearInterval(t);
+  });
+
+  async function upload(file: File, target: "post" | string) {
     setUploading(target);
     setError(null);
     try {
+      if (!["image/png", "image/jpeg", "image/webp"].includes(file.type)) throw new Error("รองรับเฉพาะ PNG, JPEG และ WebP");
       const ticket = await api.createUpload({
         fileName: file.name,
         mimeType: file.type as "image/png" | "image/jpeg" | "image/webp",
@@ -52,36 +100,105 @@ export default function Compose() {
       if (!put.ok) throw new Error(`S3 upload failed: HTTP ${put.status}`);
       await api.completeUpload(ticket.mediaId);
       if (target === "post") setMediaIds((cur) => [...cur, ticket.mediaId]);
-      else setDraftComments((cur) => cur.map((c, i) => (i === target ? { ...c, mediaId: ticket.mediaId } : c)));
+      else if (target.startsWith("detail:")) {
+        const id = target.slice(7);
+        setProductDetails((cur) => ({ ...cur, [id]: { ...(cur[id] ?? emptyDetail), mediaIds: [...(cur[id]?.mediaIds ?? []), ticket.mediaId], uploadError: null } }));
+      } else setDraftComments((cur) => cur.map((c) => (c.id === target ? { ...c, mediaId: ticket.mediaId, uploadState: undefined, uploadError: undefined } : c)));
       media.refetch();
       setTimeout(media.refetch, 2500);
       setTimeout(media.refetch, 6000);
     } catch (e) {
-      setError(e instanceof Error ? e.message : String(e));
+      const message = e instanceof Error ? e.message : String(e);
+      if (target === "post") setError(message);
+      else if (target.startsWith("detail:")) {
+        const id = target.slice(7);
+        setProductDetails((cur) => ({ ...cur, [id]: { ...(cur[id] ?? emptyDetail), uploadError: message } }));
+      } else setDraftComments((cur) => cur.map((c) => c.id === target ? { ...c, uploadState: "failed", uploadError: message } : c));
     } finally {
       setUploading(null);
     }
   }
+
+  async function uploadMany(files: File[], target: "post" | string) {
+    setQueue({ done: 0, total: files.length });
+    try {
+      for (const [i, f] of files.entries()) {
+        await upload(f, target);
+        setQueue({ done: i + 1, total: files.length });
+      }
+    } finally {
+      setQueue(null);
+    }
+  }
+
+  async function uploadBatch(files: File[]) {
+    if (!files.length || batchActive) return;
+    const details = mediaIds.reduce((n, id) => {
+      const d = productDetails[id];
+      return n + (d ? Math.max(d.mediaIds.length, d.body.trim() ? 1 : 0) : 0);
+    }, 0);
+    const space = 20 - details - draftComments.filter((c) => c.body.trim() || c.mediaId || c.uploadState).length;
+    if (files.length > space) {
+      setError(`เพิ่มได้อีก ${Math.max(space, 0)} คอมเมนต์ (สูงสุด 20 รายการต่อโพสต์)`);
+      return;
+    }
+    const rows = files.map((f) => ({ ...newComment(mediaIds.length === 1 ? mediaIds[0]! : null), fileName: f.name, uploadState: "uploading" as const }));
+    setDraftComments((cur) => [...cur, ...rows]);
+    setUseFirstComment(true);
+    setBatchActive(true);
+    try {
+      for (const [i, file] of files.entries()) await upload(file, rows[i]!.id);
+    } finally {
+      setBatchActive(false);
+    }
+  }
+
+  const setDetail = (id: string, patch: Partial<ProductDetail>) =>
+    setProductDetails((cur) => ({ ...cur, [id]: { ...(cur[id] ?? emptyDetail), ...patch } }));
+
+  const detailComments = mediaIds.flatMap((id): { body?: string; mediaId?: string; targetMediaId: string }[] => {
+    const d = productDetails[id];
+    if (!d) return [];
+    const body = d.body.trim();
+    if (!d.mediaIds.length) return body ? [{ body, targetMediaId: id }] : [];
+    return d.mediaIds.map((mediaId, i) => (i === 0 && body ? { mediaId, targetMediaId: id, body } : { mediaId, targetMediaId: id }));
+  });
+  const activeComments = draftComments.filter((c) => c.body.trim() || c.mediaId);
+  const pendingMedia = [...mediaIds, ...activeComments.map((c) => c.mediaId), ...Object.values(productDetails).flatMap((d) => d.mediaIds)]
+    .filter((id): id is string => !!id)
+    .some((id) => byId.get(id)?.status !== "ready");
+  const commentCount = detailComments.length + (useFirstComment ? activeComments.length : 0);
 
   async function publish() {
     setBusy(true);
     setError(null);
     setTrackPost(null);
     try {
+      if (detailComments.length || (useFirstComment && activeComments.some((c) => c.targetMediaId))) {
+        let supported = false;
+        try {
+          supported = (await api.postCapabilities()).photoComments === true;
+        } catch {
+          // Older backends silently discard targetMediaId; never publish to the parent post instead.
+        }
+        if (!supported) throw new Error("เซิร์ฟเวอร์ยังไม่รองรับคอมเมนต์ใต้รูปสินค้า กรุณารออัปเดตระบบก่อนเผยแพร่");
+      }
       const post = await api.createPost({
         kind,
         body,
         pageIds: [...selected],
         mediaIds,
 
-        ...(useFirstComment
+        ...(commentCount
           ? {
-              firstComments: draftComments
-                .filter((c) => c.body.trim() || c.mediaId)
-                .map((c) => ({
+              firstComments: [
+                ...detailComments,
+                ...(useFirstComment ? activeComments.map((c) => ({
                   ...(c.body.trim() ? { body: c.body.trim() } : {}),
                   ...(c.mediaId ? { mediaId: c.mediaId } : {}),
-                })),
+                  ...(c.targetMediaId ? { targetMediaId: c.targetMediaId } : {}),
+                })) : []),
+              ],
               commentDelaySeconds: commentDelay,
             }
           : {}),
@@ -92,6 +209,7 @@ export default function Compose() {
       setBody("");
       setMediaIds([]);
       setDraftComments([]);
+      setProductDetails({});
       setUseFirstComment(false);
     } catch (e) {
       setError(e instanceof Error ? e.message : String(e));
@@ -103,12 +221,15 @@ export default function Compose() {
   const canPublish =
     !!selected.size &&
     (kind === "text" ? !!body.trim() : mediaIds.length > 0) &&
-    (!useFirstComment || draftComments.some((c) => c.body.trim() || c.mediaId));
+    !batchActive && uploading === null && !pendingMedia &&
+    !draftComments.some((c) => c.uploadState) &&
+    commentCount <= 20 &&
+    (!useFirstComment || commentCount > 0);
 
   const summary = [
     `${selected.size} page(s)`,
     mediaIds.length ? `${mediaIds.length} photo(s)` : "text",
-    useFirstComment ? `+ ${draftComments.filter((c) => c.body.trim() || c.mediaId).length} comment(s)` : null,
+    commentCount ? `+ ${commentCount} comment(s)` : null,
     "now",
   ].filter(Boolean).join(" · ");
 
@@ -192,16 +313,36 @@ export default function Compose() {
             <textarea rows={6} placeholder="พิมพ์ข้อความโพสต์…" value={body} onChange={(e) => setBody(e.target.value)} />
 
 
-            <span className="field-label">รูปภาพของโพสต์ — {mediaIds.length} attached</span>
+            <div
+              className={`post-drop ${postDragOver ? "dragover" : ""}`}
+              onDragOver={(e) => { e.preventDefault(); if (e.dataTransfer.types.includes("Files")) setPostDragOver(true); }}
+              onDragLeave={() => setPostDragOver(false)}
+              onDrop={(e) => {
+                e.preventDefault();
+                setPostDragOver(false);
+                const files = Array.from(e.dataTransfer.files).slice(0, Math.max(0, 10 - mediaIds.length));
+                if (files.length) void uploadMany(files, "post");
+              }}
+            >
+            <span className="field-label">รูปภาพของโพสต์ — {mediaIds.length} attached · ลากรูปมาวางตรงนี้ได้เลย</span>
             <div className="media-grid">
-              <button type="button" className="media-cell upload" disabled={uploading !== null} onClick={() => postFileRef.current?.click()}>
-                <span className="up-icon">+</span>
-                {uploading === "post" ? "Uploading…" : "Upload"}
+              <button type="button" className={`media-cell upload ${uploading === "post" ? "is-uploading" : ""}`} disabled={uploading !== null || mediaIds.length >= 10} onClick={() => postFileRef.current?.click()}>
+                {uploading === "post" ? (
+                  <span className="up-loading"><span className="spin" />{queue && queue.total > 1 ? `อัปโหลด ${queue.done}/${queue.total}` : "กำลังอัปโหลด…"}</span>
+                ) : (<><span className="up-icon">+</span>Upload</>)}
               </button>
-              <input ref={postFileRef} type="file" accept="image/png,image/jpeg,image/webp" hidden onChange={(e) => e.target.files?.[0] && upload(e.target.files[0], "post")} />
+              <input ref={postFileRef} type="file" accept="image/png,image/jpeg,image/webp" multiple hidden onChange={(e) => {
+                const files = Array.from(e.target.files ?? []).slice(0, Math.max(0, 10 - mediaIds.length));
+                e.target.value = "";
+                if (files.length) void uploadMany(files, "post");
+              }} />
               {attachedPost.map((m) => (
                 <div key={m.id} className="media-cell on">
-                  <button className="media-del" style={{ opacity: 1 }} title="เอารูปออกจากโพสต์" onClick={() => setMediaIds((cur) => cur.filter((x) => x !== m.id))}>✕</button>
+                  <button className="media-del" style={{ opacity: 1 }} title="เอารูปออกจากโพสต์" onClick={() => {
+                    setMediaIds((cur) => cur.filter((x) => x !== m.id));
+                    setProductDetails((cur) => { const next = { ...cur }; delete next[m.id]; return next; });
+                    setDraftComments((cur) => cur.map((c) => c.targetMediaId === m.id ? { ...c, targetMediaId: null } : c));
+                  }}>✕</button>
                   <img src={m.thumbnailUrl ?? m.url} alt={m.name} />
                   <span title={m.name}>{m.name}</span>
                   {m.status !== "ready" && <StatusBadge status={m.status} />}
@@ -214,12 +355,79 @@ export default function Compose() {
             {showPostLib && (
               <div className="media-grid" style={{ marginTop: 8 }}>
                 {readyMedia.filter((m) => !mediaIds.includes(m.id)).map((m) => (
-                  <button key={m.id} type="button" className="media-cell" onClick={() => setMediaIds((cur) => [...cur, m.id])}>
+                  <button key={m.id} type="button" disabled={mediaIds.length >= 10} className="media-cell" onClick={() => setMediaIds((cur) => [...cur, m.id])}>
                     <img src={m.thumbnailUrl ?? m.url} alt={m.name} />
                     <span title={m.name}>{m.name}</span>
                   </button>
                 ))}
                 {!readyMedia.filter((m) => !mediaIds.includes(m.id)).length && <p className="muted">คลังว่าง — upload รูปใหม่ด้านบน</p>}
+              </div>
+            )}
+            </div>
+            {mediaIds.length > 0 && (
+              <div className="product-details">
+                <div className="sec-head" style={{ marginBottom: 2 }}>
+                  <h4 style={{ margin: 0 }}>รายละเอียดสินค้าใต้รูปบน Facebook</h4>
+                  <label className="delay-input" style={{ marginLeft: "auto" }}>
+                    delay
+                    <input
+                      type="number"
+                      min={0}
+                      max={3600}
+                      value={commentDelay}
+                      onChange={(e) => setCommentDelay(Math.max(0, Number(e.target.value) || 0))}
+                    />
+                    วินาที/คอมเมนต์
+                  </label>
+                </div>
+                <p className="muted">ข้อความและรูปในแต่ละแถวจะเป็นคอมเมนต์ใต้รูปสินค้านั้นโดยตรง — ลากรูปมาวางที่แถวหรือกด + รูปคอมเมนต์ ได้หลายรูปต่อแถว · คอมเมนต์ทั้งหมดจะทยอยส่งทีละอันตาม delay กันโดนสแปม</p>
+                {mediaIds.map((id, i) => {
+                  const m = byId.get(id);
+                  const detail = productDetails[id] ?? emptyDetail;
+                  return (
+                    <div
+                      key={id}
+                      className={`product-detail-row ${detailDragOver === id ? "dragover" : ""}`}
+                      onDragOver={(e) => { e.preventDefault(); if (e.dataTransfer.types.includes("Files")) setDetailDragOver(id); }}
+                      onDragLeave={() => setDetailDragOver((cur) => (cur === id ? null : cur))}
+                      onDrop={(e) => {
+                        e.preventDefault();
+                        setDetailDragOver(null);
+                        const files = Array.from(e.dataTransfer.files);
+                        if (files.length) void (async () => { for (const f of files) await upload(f, `detail:${id}`); })();
+                      }}
+                    >
+                      {m && <img src={m.thumbnailUrl ?? m.url} alt={m.name} />}
+                      <label>
+                        <span>รูปสินค้า {i + 1} · {m?.name ?? "กำลังโหลด"}</span>
+                        <textarea rows={2} maxLength={8000} placeholder="ราคา / รายละเอียด / วิธีสั่งซื้อ (เว้นว่างหากไม่ต้องการคอมเมนต์ใต้รูปนี้)" value={detail.body} onChange={(e) => setDetail(id, { body: e.target.value })} />
+                        <div className="detail-media-row">
+                          {detail.mediaIds.map((cid) => {
+                            const cm = byId.get(cid);
+                            return (
+                              <div key={cid} className="media-cell on detail-thumb">
+                                <img src={cm?.thumbnailUrl ?? cm?.url} alt="comment" />
+                                <button className="media-del" style={{ opacity: 1 }} title="เอารูปคอมเมนต์ออก" onClick={() => setDetail(id, { mediaIds: detail.mediaIds.filter((x) => x !== cid) })}>✕</button>
+                              </div>
+                            );
+                          })}
+                          <button type="button" className={`detail-attach ${uploading === `detail:${id}` ? "is-uploading" : ""}`} disabled={uploading !== null} onClick={() => { detailTargetRef.current = id; detailImageRef.current?.click(); }}>
+                            {uploading === `detail:${id}` ? (
+                              <span className="up-loading"><span className="spin" />{queue && queue.total > 1 ? `อัปโหลด ${queue.done}/${queue.total}` : "กำลังอัปโหลด…"}</span>
+                            ) : "+ รูปคอมเมนต์"}
+                          </button>
+                          {detail.uploadError && <span className="muted" style={{ color: "#f87171" }}>{detail.uploadError}</span>}
+                        </div>
+                      </label>
+                    </div>
+                  );
+                })}
+                <input ref={detailImageRef} type="file" accept="image/png,image/jpeg,image/webp" multiple hidden onChange={(e) => {
+                  const files = Array.from(e.target.files ?? []);
+                  const target = `detail:${detailTargetRef.current}`;
+                  e.target.value = "";
+                  if (files.length) void uploadMany(files, target);
+                }} />
               </div>
             )}
           </div>
@@ -233,13 +441,13 @@ export default function Compose() {
                   checked={useFirstComment}
                   onChange={(e) => {
                     setUseFirstComment(e.target.checked);
-                    if (e.target.checked && !draftComments.length) setDraftComments([{ body: "", mediaId: null }]);
+                    if (e.target.checked && !draftComments.length) setDraftComments([newComment(mediaIds.length === 1 ? mediaIds[0]! : null)]);
                   }}
                 />
                 <span className="sw-track" />
                 คอมเมนต์ใต้โพสต์
               </label>
-              <span className="hint">optional — 1 comment = 1 image</span>
+              <span className="hint">optional — 1 comment = 1 image · รวมไม่เกิน 20</span>
               {useFirstComment && (
                 <label className="delay-input">
                   delay
@@ -256,37 +464,80 @@ export default function Compose() {
             </div>
             {useFirstComment && (
               <>
+                <div className="comment-dropzone" onDragOver={(e) => e.preventDefault()} onDrop={(e) => {
+                  e.preventDefault();
+                  void uploadBatch(Array.from(e.dataTransfer.files));
+                }}>
+                  <strong>ลากรูปคอมเมนต์หลายรูปมาวางที่นี่</strong>
+                  <span className="muted">สร้างหนึ่งแถวคอมเมนต์ต่อหนึ่งรูป — เริ่มต้นอยู่ใต้โพสต์หลัก เลือกย้ายไปใต้รูปสินค้าได้ในแต่ละแถว</span>
+                  <button type="button" className="ghost" disabled={batchActive} onClick={() => batchFileRef.current?.click()}>เลือกหลายรูป</button>
+                  <input ref={batchFileRef} type="file" accept="image/png,image/jpeg,image/webp" multiple hidden onChange={(e) => {
+                    void uploadBatch(Array.from(e.target.files ?? [])); e.target.value = "";
+                  }} />
+                </div>
                 {draftComments.map((c, i) => {
                   const attached = c.mediaId ? byId.get(c.mediaId) : undefined;
                   return (
-                    <div key={i} className="comment-block">
+                    <div key={c.id} className="comment-block">
                       <div className="row-between" style={{ margin: "0 0 8px" }}>
                         <span className="muted" style={{ fontSize: 13 }}>คอมเมนต์ {i + 1}</span>
                         {draftComments.length > 1 && (
-                          <button className="link" style={{ color: "#f87171" }} onClick={() => setDraftComments((cur) => cur.filter((_, x) => x !== i))}>ลบ</button>
+                          <button className="link" style={{ color: "#f87171" }} onClick={() => setDraftComments((cur) => cur.filter((x) => x.id !== c.id))}>ลบ</button>
                         )}
                       </div>
                       <textarea
                         rows={2}
+                        maxLength={8000}
                         placeholder="เช่น ราคา / ช่องทางสั่งซื้อ / ทัก inbox…"
                         value={c.body}
-                        onChange={(e) => setDraftComments((cur) => cur.map((x, xi) => (xi === i ? { ...x, body: e.target.value } : x)))}
+                        onChange={(e) => setDraftComments((cur) => cur.map((x) => (x.id === c.id ? { ...x, body: e.target.value } : x)))}
                       />
+                      {mediaIds.length > 0 && (
+                        <div className="comment-target">
+                          <span className="muted" style={{ fontSize: 12 }}>คอมเมนต์นี้แสดงใต้:</span>
+                          <div className="target-picker">
+                            <button type="button" className={`target-chip ${!c.targetMediaId ? "on" : ""}`}
+                              onClick={() => setDraftComments((cur) => cur.map((x) => x.id === c.id ? { ...x, targetMediaId: null } : x))}>
+                              โพสต์หลัก
+                            </button>
+                            {mediaIds.map((id, index) => {
+                              const pm = byId.get(id);
+                              return (
+                                <button key={id} type="button" title={`รูปสินค้า ${index + 1}: ${pm?.name ?? id}`}
+                                  className={`target-chip target-photo ${c.targetMediaId === id ? "on" : ""}`}
+                                  onClick={() => setDraftComments((cur) => cur.map((x) => x.id === c.id ? { ...x, targetMediaId: id } : x))}>
+                                  {pm && <img src={pm.thumbnailUrl ?? pm.url} alt={`รูป ${index + 1}`} />}
+                                  <span>{index + 1}</span>
+                                </button>
+                              );
+                            })}
+                          </div>
+                        </div>
+                      )}
+                      {c.fileName && <p className={c.uploadState === "uploading" ? "uploading-note" : "muted"}>{c.fileName} {c.uploadState === "uploading" ? "— กำลังอัปโหลด" : ""}</p>}
+                      {c.uploadError && <p className="error-box">{c.uploadError} — เลือกรูปใหม่ในแถวนี้หรือลบแถว</p>}
                       <div className="media-grid" style={{ marginTop: 8 }}>
-                        <button type="button" className="media-cell upload" disabled={uploading !== null} onClick={() => commentFileRefs.current[i]?.click()}>
-                          <span className="up-icon">+</span>
-                          {uploading === i ? "Uploading…" : "รูป"}
+                        <button type="button" className={`media-cell upload ${uploading === c.id ? "is-uploading" : ""}`} disabled={uploading !== null} onClick={() => commentFileRefs.current[c.id]?.click()}>
+                          {uploading === c.id ? (
+                            <span className="up-loading"><span className="spin" />กำลังอัปโหลด…</span>
+                          ) : (<><span className="up-icon">+</span>รูป</>)}
                         </button>
                         <input
-                          ref={(el) => { commentFileRefs.current[i] = el; }}
+                          ref={(el) => { commentFileRefs.current[c.id] = el; }}
                           type="file"
                           accept="image/png,image/jpeg,image/webp"
                           hidden
-                          onChange={(e) => e.target.files?.[0] && upload(e.target.files[0], i)}
+                          onChange={(e) => {
+                            if (e.target.files?.[0]) {
+                              setDraftComments((cur) => cur.map((x) => x.id === c.id ? { ...x, uploadState: "uploading", uploadError: undefined } : x));
+                              void upload(e.target.files[0], c.id);
+                            }
+                            e.target.value = "";
+                          }}
                         />
                         {attached && (
                           <div className="media-cell on">
-                            <button className="media-del" style={{ opacity: 1 }} title="เอารูปออก" onClick={() => setDraftComments((cur) => cur.map((x, xi) => (xi === i ? { ...x, mediaId: null } : x)))}>✕</button>
+                            <button className="media-del" style={{ opacity: 1 }} title="เอารูปออก" onClick={() => setDraftComments((cur) => cur.map((x) => (x.id === c.id ? { ...x, mediaId: null, fileName: undefined } : x)))}>✕</button>
                             <img src={attached.thumbnailUrl ?? attached.url} alt={attached.name} />
                             <span title={attached.name}>{attached.name}</span>
                             {attached.status !== "ready" && <StatusBadge status={attached.status} />}
@@ -294,14 +545,14 @@ export default function Compose() {
                         )}
                       </div>
                       {!attached && (
-                        <button className="link" style={{ marginTop: 6 }} onClick={() => setShowCommentLib((v) => (v === i ? null : i))}>
-                          {showCommentLib === i ? "▾ ซ่อนคลังรูป" : "▸ เลือกรูปจากคลังเดิม"}
+                        <button className="link" style={{ marginTop: 6 }} onClick={() => setShowCommentLib((v) => (v === c.id ? null : c.id))}>
+                          {showCommentLib === c.id ? "▾ ซ่อนคลังรูป" : "▸ เลือกรูปจากคลังเดิม"}
                         </button>
                       )}
-                      {showCommentLib === i && !attached && (
+                      {showCommentLib === c.id && !attached && (
                         <div className="media-grid" style={{ marginTop: 8 }}>
                           {readyMedia.map((m) => (
-                            <button key={m.id} type="button" className="media-cell" onClick={() => { setDraftComments((cur) => cur.map((x, xi) => (xi === i ? { ...x, mediaId: m.id } : x))); setShowCommentLib(null); }}>
+                            <button key={m.id} type="button" className="media-cell" onClick={() => { setDraftComments((cur) => cur.map((x) => (x.id === c.id ? { ...x, mediaId: m.id, uploadState: undefined, uploadError: undefined } : x))); setShowCommentLib(null); }}>
                               <img src={m.thumbnailUrl ?? m.url} alt={m.name} />
                               <span title={m.name}>{m.name}</span>
                             </button>
@@ -312,10 +563,11 @@ export default function Compose() {
                     </div>
                   );
                 })}
-                <button className="link" onClick={() => setDraftComments((cur) => [...cur, { body: "", mediaId: null }])}>
+                <button className="link" disabled={commentCount >= 20} onClick={() => setDraftComments((cur) => [...cur, newComment(mediaIds.length === 1 ? mediaIds[0]! : null)])}>
                   + เพิ่มคอมเมนต์อีก
                 </button>
-                <p className="muted" style={{ marginTop: 8 }}>ทุกคอมเมนต์จะถูกส่งใต้โพสต์ใหม่ของทุกเพจที่เลือกอัตโนมัติ</p>
+                {pendingMedia && <p className="muted">รอประมวลผลรูปให้พร้อมก่อนเผยแพร่ หากรูปขึ้น failed ให้ลบแล้วอัปโหลดใหม่</p>}
+                <p className="muted" style={{ marginTop: 8 }}>รูปในคอมเมนต์คือรูปแนบของคอมเมนต์; ค่าเริ่มต้นแสดงใต้โพสต์หลัก — เลือก "ใต้รูปสินค้า" ในดรอปดาวน์หากต้องการให้ปรากฏใต้รูปนั้นบน Facebook</p>
               </>
             )}
           </div>

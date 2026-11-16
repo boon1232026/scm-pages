@@ -39,6 +39,11 @@ export class PostsController {
     return this.posts.list(workspaceId!, { status, cursor });
   }
 
+  @Get("capabilities")
+  capabilities() {
+    return { photoComments: true };
+  }
+
   @Get(":id")
   get(@WorkspaceId() workspaceId: string, @Param("id", ParseUUIDPipe) id: string) {
     return this.posts.get(workspaceId!, id);

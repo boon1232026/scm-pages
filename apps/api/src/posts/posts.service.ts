@@ -223,7 +223,7 @@ export class PostsService {
     commentDelaySec: number | null;
     media: { mediaAssetId: string; position: number }[];
     pages: ({
-      socialPageId: string; bodyOverride: string | null; fbPostId: string | null;
+      socialPageId: string; bodyOverride: string | null; fbPostId: string | null; photoIds: unknown;
       status: string; attemptCount: number; lastError: unknown; publishedAt: Date | null;
       socialPage: { name: string };
     })[];
@@ -236,7 +236,7 @@ export class PostsService {
       scheduledAt: p.scheduledAt?.toISOString() ?? null,
       publishedAt: p.publishedAt?.toISOString() ?? null,
       createdAt: p.createdAt.toISOString(),
-      firstComments: (p.firstComments as { body: string | null; mediaId: string | null }[] | null) ?? [],
+      firstComments: (p.firstComments as Post["firstComments"] | null) ?? [],
       commentDelaySec: p.commentDelaySec ?? 0,
       mediaIds: [...p.media].sort((a, b) => a.position - b.position).map((m) => m.mediaAssetId),
       pages: p.pages.map(
@@ -245,6 +245,7 @@ export class PostsService {
           pageName: pp.socialPage.name,
           status: pp.status as PostPage["status"],
           fbPostId: pp.fbPostId,
+          photoIds: (pp.photoIds as Record<string, string> | null) ?? null,
           bodyOverride: pp.bodyOverride,
           attemptCount: pp.attemptCount,
           lastError: pp.lastError ? JSON.stringify(pp.lastError) : null,

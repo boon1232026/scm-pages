@@ -190,7 +190,11 @@ export const createPostSchema = z
     firstComments: z
       .array(
         z
-          .object({ body: z.string().max(8000).optional(), mediaId: uuid.optional() })
+          .object({
+            body: z.string().max(8000).optional(),
+            mediaId: uuid.optional(),
+            targetMediaId: uuid.optional(),
+          })
           .refine((v) => v.body || v.mediaId, { message: "each comment requires body or mediaId" }),
       )
       .max(20)
@@ -206,6 +210,9 @@ export const createPostSchema = z
   })
   .refine((v) => (v.kind !== "multi_photo" ? v.mediaIds.length <= 1 : true), {
     message: "photo kind accepts exactly one mediaId",
+  })
+  .refine((v) => (v.firstComments ?? []).every((c) => !c.targetMediaId || v.mediaIds.includes(c.targetMediaId)), {
+    message: "comment targetMediaId must be a photo attached to this post",
   });
 export type CreatePostInput = z.infer<typeof createPostSchema>;
 
@@ -214,6 +221,7 @@ export const postPageSchema = z.object({
   pageName: z.string(),
   status: z.enum(["queued", "publishing", "published", "failed", "skipped"]),
   fbPostId: z.string().nullable(),
+  photoIds: z.record(z.string()).nullable(),
   bodyOverride: z.string().nullable(),
   attemptCount: z.number().int(),
   lastError: z.string().nullable(),
@@ -238,7 +246,11 @@ export const postSchema = z.object({
   scheduledAt: isoDateTime.nullable(),
   publishedAt: isoDateTime.nullable(),
   createdAt: isoDateTime,
-  firstComments: z.array(z.object({ body: z.string().nullable(), mediaId: uuid.nullable() })),
+  firstComments: z.array(z.object({
+    body: z.string().nullable(),
+    mediaId: uuid.nullable(),
+    targetMediaId: uuid.nullable().optional(),
+  })),
   commentDelaySec: z.number().int().nullable(),
   mediaIds: z.array(uuid),
   pages: z.array(postPageSchema),
@@ -261,6 +273,7 @@ export type CreateCommentInput = z.infer<typeof createCommentSchema>;
 
 export const commentSchema = z.object({
   id: uuid,
+  postId: uuid.nullable(),
   socialPageId: uuid,
   fbTargetId: z.string(),
   parentCommentId: z.string().nullable(),

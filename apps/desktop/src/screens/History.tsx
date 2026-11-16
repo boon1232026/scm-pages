@@ -1,11 +1,24 @@
 import { useState } from "react";
 import { api } from "../lib/api";
 import { Err, fmtDate, StatusBadge, useQuery } from "../lib/hooks";
+import type { Comment, MediaAsset } from "@scm/contracts";
+
+async function loadPages<T>(fetchPage: (cursor?: string) => Promise<{ items: T[]; nextCursor: string | null }>) {
+  const items: T[] = [];
+  let cursor: string | null = null;
+  for (let i = 0; i < 10; i++) {
+    const page = await fetchPage(cursor ?? undefined);
+    items.push(...page.items);
+    cursor = page.nextCursor;
+    if (!cursor) break;
+  }
+  return { items };
+}
 
 export default function History() {
   const posts = useQuery(() => api.listPosts(), []);
-  const comments = useQuery(() => api.listComments(), []);
-  const media = useQuery(() => api.listMedia(), []);
+  const comments = useQuery(() => loadPages<Comment>((cursor) => api.listComments(cursor ? { cursor } : undefined)), []);
+  const media = useQuery(() => loadPages<MediaAsset>((cursor) => api.listMedia(cursor ? { cursor } : undefined)), []);
   const notifications = useQuery(() => api.listNotifications(), []);
   const mediaById = new Map((media.data?.items ?? []).map((m) => [m.id, m]));
   const [open, setOpen] = useState<string | null>(null);
@@ -56,8 +69,17 @@ export default function History() {
           items.map((p) => {
             const expanded = open === p.id;
             const postComments = (comments.data?.items ?? []).filter((c) =>
-              p.pages.some((pg) => pg.fbPostId && c.fbTargetId === pg.fbPostId)
+              c.postId === p.id || p.pages.some((pg) => pg.fbPostId && c.fbTargetId === pg.fbPostId)
             );
+            const commentTarget = (c: Comment) => {
+              const page = p.pages.find((pg) => pg.socialPageId === c.socialPageId);
+              const productId = Object.entries(page?.photoIds ?? {}).find(([, photoId]) => photoId === c.fbTargetId)?.[0];
+              return {
+                pageName: page?.pageName ?? "Page",
+                productIndex: productId ? p.mediaIds.indexOf(productId) + 1 : null,
+                product: productId ? mediaById.get(productId) : null,
+              };
+            };
             return (
               <div key={p.id} className="post-row">
                 <div className="row-between">
@@ -102,6 +124,16 @@ export default function History() {
                           })}
                         </div>
                       ) : null}
+                      {p.firstComments.some((c) => c.targetMediaId) && (
+                        <div className="detail-block">
+                          <h4>รายละเอียดแยกตามรูปสินค้า</h4>
+                          {p.firstComments.filter((c) => c.targetMediaId).map((c, i) => (
+                            <p key={i} className="muted">
+                              รูป {p.mediaIds.indexOf(c.targetMediaId!) + 1}: {c.body || "(รูปแนบคอมเมนต์)"}
+                            </p>
+                          ))}
+                        </div>
+                      )}
                     </div>
                     <table>
                       <tbody>
@@ -115,13 +147,31 @@ export default function History() {
                         ))}
                       </tbody>
                     </table>
+                    {p.pages.some((pg) => pg.photoIds && Object.keys(pg.photoIds).length > 0) && (
+                      <div className="detail-block">
+                        <h4>Facebook photo ID แยกตามเพจ</h4>
+                        {p.pages.flatMap((pg) => Object.entries(pg.photoIds ?? {}).map(([id, photoId]) => (
+                          <p key={`${pg.socialPageId}-${id}`} className="muted mono">
+                            {pg.pageName} · รูป {p.mediaIds.indexOf(id) + 1}: {photoId}
+                          </p>
+                        )))}
+                      </div>
+                    )}
                     {postComments.length ? (
                       <div className="detail-block">
-                        <h4>Comments under this post</h4>
+                        <h4>คอมเมนต์ของโพสต์และแต่ละรูปสินค้า</h4>
                         <table>
                           <tbody>
                             {postComments.map((c) => (
                               <tr key={c.id}>
+                                <td className="muted">
+                                  {commentTarget(c).pageName} · {commentTarget(c).productIndex
+                                    ? `ใต้รูปสินค้า ${commentTarget(c).productIndex}`
+                                    : "ใต้โพสต์"}
+                                  {commentTarget(c).product && (
+                                    <img src={commentTarget(c).product!.thumbnailUrl ?? commentTarget(c).product!.url} alt="product" className="detail-thumb detail-thumb-sm" />
+                                  )}
+                                </td>
                                 <td className="detail-body">{(c.body ?? "").slice(0, 120) || (c.mediaId ? "(image)" : "")}</td>
                                 <td>
                                   {c.mediaId && mediaById.get(c.mediaId) ? (
