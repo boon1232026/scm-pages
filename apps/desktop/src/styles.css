@@ -330,6 +330,13 @@ button.ghost { background: transparent; border: 1px solid var(--border, #2a3346)
 .sent-chip img { width: 24px; height: 24px; border-radius: 4px; object-fit: cover; }
 .sent-chip .sent-text { color: var(--muted); max-width: 140px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .sent-chip .badge { font-size: 10px; padding: 1px 6px; }
+
+/* real facebook comments list */
+.fb-cmt-list { margin-top: 8px; padding-top: 8px; border-top: 1px dashed var(--border); font-size: 12px; }
+.fb-cmt { display: flex; align-items: center; gap: 8px; padding: 4px 0; }
+.fb-cmt img { width: 28px; height: 28px; border-radius: 4px; object-fit: cover; flex-shrink: 0; }
+.fb-cmt-name { font-weight: 600; flex-shrink: 0; }
+.fb-cmt-msg { color: var(--muted); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; flex: 1; min-width: 0; }
 .spin { width: 16px; height: 16px; border: 2px solid #93c5fd; border-top-color: transparent; border-radius: 50%; animation: scm-spin .8s linear infinite; flex-shrink: 0; }
 @keyframes scm-spin { to { transform: rotate(360deg); } }
 button.is-uploading:disabled { opacity: 1; color: #93c5fd; border-color: var(--accent); }

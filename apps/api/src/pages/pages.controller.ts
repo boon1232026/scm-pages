@@ -62,6 +62,11 @@ export class PagesController {
     return this.pages.feed(workspaceId!, id, limit ?? 25, cursor);
   }
 
+  @Get(":id/posts/:fbPostId/comments")
+  postComments(@WorkspaceId() workspaceId: string, @Param("id", ParseUUIDPipe) id: string, @Param("fbPostId") fbPostId: string) {
+    return this.pages.postComments(workspaceId!, id, fbPostId);
+  }
+
   @Get(":id/posts/:fbPostId/photos")
   postPhotos(@WorkspaceId() workspaceId: string, @Param("id", ParseUUIDPipe) id: string, @Param("fbPostId") fbPostId: string) {
     return this.pages.postPhotos(workspaceId!, id, fbPostId);

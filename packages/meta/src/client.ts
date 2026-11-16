@@ -54,6 +54,14 @@ export interface PostPhoto {
   imageUrl: string | null;
 }
 
+export interface ObjectComment {
+  id: string;
+  message: string | null;
+  createdTime: string | null;
+  fromName: string | null;
+  imageUrl: string | null;
+}
+
 interface GraphAttachment {
   type?: string;
   media?: { image?: { src?: string } };
@@ -183,6 +191,41 @@ export class MetaClient {
     }
     const { attachments: _a, ...post } = res;
     return { post, photos: out };
+  }
+
+  /** Real comments on any graph object (post or photo) — includes comments made directly on the page. */
+  async objectComments(objectId: string, pageToken: string): Promise<ObjectComment[]> {
+    const out: ObjectComment[] = [];
+    let after: string | undefined;
+    for (let i = 0; i < 3; i++) {
+      const res = await this.get<{
+        data?: Array<{
+          id: string;
+          message?: string;
+          created_time?: string;
+          from?: { id: string; name: string };
+          attachment?: { media?: { image?: { src?: string } } };
+        }>;
+        paging?: { cursors?: { after?: string }; next?: string };
+      }>(`/${objectId}/comments`, {
+        fields: "id,message,created_time,from,attachment{media{image}}",
+        limit: "100",
+        access_token: pageToken,
+        ...(after ? { after } : {}),
+      });
+      for (const c of res.data ?? []) {
+        out.push({
+          id: c.id,
+          message: c.message ?? null,
+          createdTime: c.created_time ?? null,
+          fromName: c.from?.name ?? null,
+          imageUrl: c.attachment?.media?.image?.src ?? null,
+        });
+      }
+      after = res.paging?.next ? res.paging.cursors?.after : undefined;
+      if (!after) break;
+    }
+    return out;
   }
 
   // ---------- publishing ----------

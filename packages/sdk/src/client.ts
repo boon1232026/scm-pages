@@ -12,6 +12,7 @@ import {
   type SocialPage,
   type PageHealth,
   type FbFeedPost,
+  type FbComment,
   type FbPostPhoto,
   type MediaAsset,
   type UploadTicket,
@@ -157,6 +158,8 @@ export class SocialCommerceClient {
     this.get<Page<FbFeedPost>>(Routes.pages.feed(id), { limit: q?.limit, cursor: q?.cursor });
   postPhotos = (pageId: string, fbPostId: string) =>
     this.get<{ post: FbFeedPost; photos: FbPostPhoto[] }>(Routes.pages.postPhotos(pageId, fbPostId));
+  postComments = (pageId: string, fbPostId: string) =>
+    this.get<{ targets: { fbTargetId: string; comments: FbComment[] }[] }>(Routes.pages.postComments(pageId, fbPostId));
 
   // ---------- media ----------
   createUpload = (b: CreateUploadInput) => this.post<UploadTicket>(Routes.media.uploads, b);

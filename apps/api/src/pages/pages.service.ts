@@ -134,6 +134,18 @@ export class PagesService {
     };
   }
 
+  /** Real comments on the post + each photo — includes comments made directly on Facebook. */
+  async postComments(workspaceId: string, pageUuid: string, fbPostId: string) {
+    const page = await this.findInWorkspace(workspaceId, pageUuid);
+    const token = await this.accounts.getPageToken(page.id);
+    const { photos } = await this.meta.postPhotos(fbPostId, token);
+    const targets = [{ fbTargetId: fbPostId }, ...photos.map((p) => ({ fbTargetId: p.fbPhotoId }))];
+    const results = await Promise.all(
+      targets.map(async (t) => ({ fbTargetId: t.fbTargetId, comments: await this.meta.objectComments(t.fbTargetId, token) })),
+    );
+    return { targets: results };
+  }
+
   async findInWorkspace(workspaceId: string, pageUuid: string) {
     const page = await this.prisma.socialPage.findFirst({
       where: { id: pageUuid, workspaceId, deletedAt: null },

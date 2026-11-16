@@ -30,6 +30,7 @@ export const Routes = {
     health: (id: string) => `/pages/${id}/health`,
     feed: (id: string) => `/pages/${id}/feed`,
     postPhotos: (id: string, fbPostId: string) => `/pages/${id}/posts/${fbPostId}/photos`,
+    postComments: (id: string, fbPostId: string) => `/pages/${id}/posts/${fbPostId}/comments`,
   },
   media: {
     root: "/media",

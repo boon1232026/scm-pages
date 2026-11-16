@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from "react";
 import { Link } from "react-router-dom";
-import type { Comment, FbFeedPost, FbPostPhoto, MediaAsset } from "@scm/contracts";
+import type { Comment, FbComment, FbFeedPost, FbPostPhoto, MediaAsset } from "@scm/contracts";
 import { api } from "../lib/api";
 import { Err, fmtDate, StatusBadge, useQuery } from "../lib/hooks";
 
@@ -37,6 +37,7 @@ export default function CommentPost() {
   const [photos, setPhotos] = useState<FbPostPhoto[] | null>(null);
   const [photosLoading, setPhotosLoading] = useState(false);
   const [sent, setSent] = useState<Comment[]>([]);
+  const [fbComments, setFbComments] = useState<Map<string, FbComment[]>>(new Map());
 
   const [rows, setRows] = useState<Record<string, Row>>({});
   const [delay, setDelay] = useState(30);
@@ -77,6 +78,13 @@ export default function CommentPost() {
     }
   }
 
+  async function loadFbComments(fbPostId: string) {
+    try {
+      const res = await api.postComments(pageId, fbPostId);
+      setFbComments(new Map(res.targets.map((t) => [t.fbTargetId, t.comments])));
+    } catch { /* informational only */ }
+  }
+
   async function loadSent(fbPostId: string) {
     try {
       const items: Comment[] = [];
@@ -98,6 +106,7 @@ export default function CommentPost() {
     setPost(null);
     setPhotos(null);
     setSent([]);
+    setFbComments(new Map());
     setRows({});
     setCreated(null);
     setError(null);
@@ -120,6 +129,7 @@ export default function CommentPost() {
     setPhotos(null);
     setRows({});
     setSent([]);
+    setFbComments(new Map());
     setCreated(null);
     setError(null);
     setPhotosLoading(true);
@@ -127,6 +137,7 @@ export default function CommentPost() {
       const res = await api.postPhotos(pageId, p.id);
       setPhotos(res.photos);
       void loadSent(p.id);
+      void loadFbComments(p.id);
     } catch (e) {
       setError(e instanceof Error ? e.message : String(e));
       setPhotos([]);
@@ -381,6 +392,33 @@ export default function CommentPost() {
                             })}
                           </div>
                         ) : null;
+                      })()}
+                      {(() => {
+                        const target = key === POST_ROW ? post.id : key;
+                        const fbHere = fbComments.get(target) ?? [];
+                        if (!fbHere.length) return null;
+                        const ourIds = new Set(
+                          sent.filter((c) => c.fbTargetId === target && c.fbCommentId)
+                            .flatMap((c) => { const s = c.fbCommentId!.split("_"); return [c.fbCommentId!, s[s.length - 1]!]; }),
+                        );
+                        const shown = fbHere.slice(0, 10);
+                        return (
+                          <div className="fb-cmt-list">
+                            <span className="muted">คอมเมนต์เดิมบน Facebook ({fbHere.length}):</span>
+                            {shown.map((fc) => {
+                              const ours = ourIds.has(fc.id) || ourIds.has(fc.id.split("_").pop()!);
+                              return (
+                                <div key={fc.id} className="fb-cmt">
+                                  {fc.imageUrl && <img src={fc.imageUrl} alt="" />}
+                                  <span className="fb-cmt-name">{fc.fromName ?? "—"}</span>
+                                  <span className="fb-cmt-msg">{(fc.message ?? "").slice(0, 80) || (fc.imageUrl ? "(รูป)" : "")}</span>
+                                  {ours && <span className="badge ok">ผ่านแอป</span>}
+                                </div>
+                              );
+                            })}
+                            {fbHere.length > shown.length && <span className="muted">… และอีก {fbHere.length - shown.length} รายการ</span>}
+                          </div>
+                        );
                       })()}
                     </label>
                   </div>

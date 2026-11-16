@@ -278,6 +278,16 @@ export const fbPostPhotoSchema = z.object({
 });
 export type FbPostPhoto = z.infer<typeof fbPostPhotoSchema>;
 
+/** A real comment as returned by Graph API on a post or photo. */
+export const fbCommentSchema = z.object({
+  id: z.string(),
+  message: z.string().nullable(),
+  createdTime: z.string().nullable(),
+  fromName: z.string().nullable(),
+  imageUrl: z.string().nullable(),
+});
+export type FbComment = z.infer<typeof fbCommentSchema>;
+
 export const createCommentBatchSchema = z.object({
   comments: z
     .array(createCommentObject.omit({ scheduledAt: true }).refine((v) => v.body || v.mediaId, { message: "body or mediaId required" }))
