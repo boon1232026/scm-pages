@@ -59,7 +59,7 @@ export default function CommentPost() {
         r.mediaIds.some((id) => !byId.get(id) || byId.get(id)?.status === "processing"),
       );
       if (pending) media.refetch();
-    }, 3000);
+    }, 1200);
     return () => clearInterval(t);
   });
 
@@ -146,8 +146,8 @@ export default function CommentPost() {
     }
   }
 
-  async function upload(target: string, file: File) {
-    setUploading(target);
+  async function upload(target: string, file: File, track = true) {
+    if (track) setUploading(target);
     setError(null);
     try {
       if (!["image/png", "image/jpeg", "image/webp"].includes(file.type)) throw new Error("รองรับเฉพาะ PNG, JPEG และ WebP");
@@ -161,24 +161,31 @@ export default function CommentPost() {
       await api.completeUpload(ticket.mediaId);
       setRows((cur) => ({ ...cur, [target]: { ...(cur[target] ?? emptyRow), mediaIds: [...(cur[target]?.mediaIds ?? []), ticket.mediaId], uploadError: null } }));
       media.refetch();
+      setTimeout(media.refetch, 1000);
       setTimeout(media.refetch, 2500);
-      setTimeout(media.refetch, 6000);
     } catch (e) {
       const message = e instanceof Error ? e.message : String(e);
       setRows((cur) => ({ ...cur, [target]: { ...(cur[target] ?? emptyRow), uploadError: message } }));
     } finally {
-      setUploading(null);
+      if (track) setUploading(null);
     }
   }
 
   async function uploadMany(files: File[], target: string) {
     setQueue({ done: 0, total: files.length });
+    setUploading(target);
+    let done = 0;
     try {
-      for (const [i, f] of files.entries()) {
-        await upload(target, f);
-        setQueue({ done: i + 1, total: files.length });
+      for (let i = 0; i < files.length; i += 4) {
+        await Promise.all(
+          files.slice(i, i + 4).map(async (f) => {
+            await upload(target, f, false);
+            setQueue({ done: ++done, total: files.length });
+          }),
+        );
       }
     } finally {
+      setUploading(null);
       setQueue(null);
     }
   }

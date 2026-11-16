@@ -82,12 +82,12 @@ export default function Compose() {
         draftComments.some((c) => c.mediaId && (!byId.get(c.mediaId) || byId.get(c.mediaId)?.status === "processing"))) {
         media.refetch();
       }
-    }, 3000);
+    }, 1200);
     return () => clearInterval(t);
   });
 
-  async function upload(file: File, target: "post" | string) {
-    setUploading(target);
+  async function upload(file: File, target: "post" | string, track = true) {
+    if (track) setUploading(target);
     setError(null);
     try {
       if (!["image/png", "image/jpeg", "image/webp"].includes(file.type)) throw new Error("รองรับเฉพาะ PNG, JPEG และ WebP");
@@ -105,8 +105,8 @@ export default function Compose() {
         setProductDetails((cur) => ({ ...cur, [id]: { ...(cur[id] ?? emptyDetail), mediaIds: [...(cur[id]?.mediaIds ?? []), ticket.mediaId], uploadError: null } }));
       } else setDraftComments((cur) => cur.map((c) => (c.id === target ? { ...c, mediaId: ticket.mediaId, uploadState: undefined, uploadError: undefined } : c)));
       media.refetch();
+      setTimeout(media.refetch, 1000);
       setTimeout(media.refetch, 2500);
-      setTimeout(media.refetch, 6000);
     } catch (e) {
       const message = e instanceof Error ? e.message : String(e);
       if (target === "post") setError(message);
@@ -115,18 +115,27 @@ export default function Compose() {
         setProductDetails((cur) => ({ ...cur, [id]: { ...(cur[id] ?? emptyDetail), uploadError: message } }));
       } else setDraftComments((cur) => cur.map((c) => c.id === target ? { ...c, uploadState: "failed", uploadError: message } : c));
     } finally {
-      setUploading(null);
+      if (track) setUploading(null);
+    }
+  }
+
+  async function uploadChunks<T>(items: T[], run: (item: T) => Promise<void>) {
+    for (let i = 0; i < items.length; i += 4) {
+      await Promise.all(items.slice(i, i + 4).map(run));
     }
   }
 
   async function uploadMany(files: File[], target: "post" | string) {
     setQueue({ done: 0, total: files.length });
+    setUploading(target);
+    let done = 0;
     try {
-      for (const [i, f] of files.entries()) {
-        await upload(f, target);
-        setQueue({ done: i + 1, total: files.length });
-      }
+      await uploadChunks(files, async (f) => {
+        await upload(f, target, false);
+        setQueue({ done: ++done, total: files.length });
+      });
     } finally {
+      setUploading(null);
       setQueue(null);
     }
   }
@@ -147,7 +156,10 @@ export default function Compose() {
     setUseFirstComment(true);
     setBatchActive(true);
     try {
-      for (const [i, file] of files.entries()) await upload(file, rows[i]!.id);
+      await uploadChunks(
+        files.map((file, i) => ({ file, rowId: rows[i]!.id })),
+        ({ file, rowId }) => upload(file, rowId, false),
+      );
     } finally {
       setBatchActive(false);
     }

@@ -15,11 +15,11 @@ export interface PublishCommentJobData {
 /**
  * Publishes a comment via POST /{fbTargetId}/comments.
  * - text:  { message }
- * - photo: { attachment_url } — supported by Graph API for page comments where the
- *   page token has pages_manage_engagement; if Meta rejects it we surface a
- *   META_CAPABILITY_UNSUPPORTED-style error in last_error (verified live in Phase 4).
+ * - photo: uploads an unpublished page photo first, then comments with
+ *   { attachment_id } (renders better in Meta Business Suite); falls back to
+ *   { attachment_url } if that path fails.
  */
-@Processor(QUEUE_NAMES.publishComment)
+@Processor(QUEUE_NAMES.publishComment, { concurrency: 4 })
 export class PublishCommentProcessor extends WorkerHost {
   private readonly logger = new Logger(PublishCommentProcessor.name);
 
@@ -59,9 +59,22 @@ export class PublishCommentProcessor extends WorkerHost {
 
       const params: Record<string, string> = {};
       if (c.body) params.message = c.body;
-      if (c.mediaAsset) params.attachment_url = c.mediaAsset.url;
 
-      const r = await this.meta.createComment(c.fbTargetId, pageToken, params);
+      let r: { id: string };
+      if (c.mediaAsset) {
+        // Prefer attachment_id: upload the image as an unpublished page photo so
+        // Meta creates a real photo object (renders better in Meta Business Suite
+        // than attachment_url). Fall back to attachment_url if that path fails.
+        try {
+          const photo = await this.meta.uploadPhoto(c.socialPage.pageId, pageToken, c.mediaAsset.url, false);
+          r = await this.meta.createComment(c.fbTargetId, pageToken, { ...params, attachment_id: photo.id });
+        } catch (err) {
+          this.logger.warn(`attachment_id path failed for ${c.id}, retrying with attachment_url: ${err}`);
+          r = await this.meta.createComment(c.fbTargetId, pageToken, { ...params, attachment_url: c.mediaAsset.url });
+        }
+      } else {
+        r = await this.meta.createComment(c.fbTargetId, pageToken, params);
+      }
       await this.prisma.comment.update({
         where: { id: c.id },
         data: { status: "published", fbCommentId: r.id, publishedAt: new Date() },

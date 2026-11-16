@@ -19,7 +19,7 @@ const THUMB_EDGE = 320;
  * re-encode (strips polyglot payloads), cap at 2048px, generate a 320px webp
  * thumbnail, fill width/height, status -> ready. Failures -> status failed.
  */
-@Processor(QUEUE_NAMES.mediaProcess)
+@Processor(QUEUE_NAMES.mediaProcess, { concurrency: 6 })
 export class MediaProcessProcessor extends WorkerHost implements OnModuleInit {
   private readonly logger = new Logger(MediaProcessProcessor.name);
 
