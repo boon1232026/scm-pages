@@ -47,3 +47,5 @@ jobs:
       - run: pnpm -r typecheck
       - run: pnpm -r build
       - run: pnpm -r test
+      - name: API e2e (auth + workspaces + RBAC)
+        run: pnpm --filter @scm/api test:e2e

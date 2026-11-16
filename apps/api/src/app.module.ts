@@ -6,6 +6,10 @@ import { validateEnv } from "./config/env";
 import { PrismaModule } from "./prisma/prisma.module";
 import { HealthController } from "./health/health.controller";
 import { ApiErrorFilter } from "./common/http-error.filter";
+import { AuthModule } from "./auth/auth.module";
+import { UsersModule } from "./users/users.module";
+import { WorkspacesModule } from "./workspaces/workspaces.module";
+import { ActivityLogModule } from "./activity-log/activity-log.module";
 
 @Module({
   imports: [
@@ -17,6 +21,10 @@ import { ApiErrorFilter } from "./common/http-error.filter";
     }),
     ThrottlerModule.forRoot([{ ttl: 60_000, limit: 100 }]),
     PrismaModule,
+    AuthModule,
+    UsersModule,
+    WorkspacesModule,
+    ActivityLogModule,
   ],
   controllers: [HealthController],
   providers: [
