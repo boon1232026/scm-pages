@@ -1,7 +1,96 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { api } from "../lib/api";
 import { Err, fmtDate, StatusBadge, useQuery } from "../lib/hooks";
-import type { Comment, MediaAsset } from "@scm/contracts";
+import type { Comment, FbFeedPost, FbPostPhoto, MediaAsset } from "@scm/contracts";
+
+/** One old-post group: fetches post info + photos on expand to label each comment's target. */
+function ExternalPostGroup({ fbPostId, comments, mediaById, pageName }: {
+  fbPostId: string;
+  comments: Comment[];
+  mediaById: Map<string, MediaAsset>;
+  pageName: string;
+}) {
+  const [open, setOpen] = useState(false);
+  const [info, setInfo] = useState<{ post: FbFeedPost; photos: FbPostPhoto[] } | null>(null);
+  const [loading, setLoading] = useState(true);
+  const [err, setErr] = useState<string | null>(null);
+
+  useEffect(() => {
+    api.postPhotos(comments[0]!.socialPageId, fbPostId)
+      .then(setInfo)
+      .catch((e: Error) => setErr(e.message))
+      .finally(() => setLoading(false));
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  const expand = () => setOpen((o) => !o);
+
+  const photoIndex = new Map((info?.photos ?? []).map((p, i) => [p.fbPhotoId, i]));
+  const targetLabel = (c: Comment) => {
+    if (c.fbTargetId === fbPostId) return { label: "ใต้โพสต์", photo: null };
+    const i = photoIndex.get(c.fbTargetId);
+    return i !== undefined
+      ? { label: `ใต้รูป ${i + 1}`, photo: info!.photos[i] }
+      : { label: "ใต้รูป", photo: null };
+  };
+  const counts = comments.reduce<Record<string, number>>((m, c) => ({ ...m, [c.status]: (m[c.status] ?? 0) + 1 }), {});
+
+  return (
+    <div className="post-row">
+      <div className="row-between">
+        <div>
+          <span className="badge">โพสต์เก่า</span>{" "}
+          {Object.entries(counts).map(([s, n]) => <span key={s} style={{ marginRight: 6 }}><StatusBadge status={s} /> ×{n} </span>)}
+          <p>
+            {info?.post.thumbnailUrl && <img src={info.post.thumbnailUrl} alt="" className="detail-thumb detail-thumb-sm" style={{ verticalAlign: "middle", marginRight: 8 }} />}
+            {(info?.post.message ?? `${comments.length} คอมเมนต์`).slice(0, 140)}
+          </p>
+          <p className="muted">
+            {pageName} · {comments.length} comment(s)
+            {info?.post.permalinkUrl && <> · <a href={info.post.permalinkUrl} target="_blank" rel="noreferrer" className="link">เปิดโพสต์</a></>}
+          </p>
+        </div>
+        <div className="actions">
+          <button className="ghost" onClick={expand}>{open ? "Hide detail" : "Detail"}</button>
+        </div>
+      </div>
+      {open && (
+        <div className="post-detail">
+          {loading && <p className="muted">กำลังโหลดข้อมูลโพสต์…</p>}
+          <Err msg={err} />
+          {info && (
+            <table>
+              <tbody>
+                {comments.map((c) => {
+                  const t = targetLabel(c);
+                  return (
+                    <tr key={c.id}>
+                      <td className="muted">
+                        {t.label}
+                        {t.photo?.imageUrl && <img src={t.photo.imageUrl} alt="" className="detail-thumb detail-thumb-sm" />}
+                      </td>
+                      <td className="detail-body">{(c.body ?? "").slice(0, 120) || (c.mediaId ? "(image)" : "")}</td>
+                      <td>
+                        {c.mediaId && mediaById.get(c.mediaId) ? (
+                          <a href={mediaById.get(c.mediaId)!.url} target="_blank" rel="noreferrer">
+                            <img src={mediaById.get(c.mediaId)!.thumbnailUrl ?? mediaById.get(c.mediaId)!.url} alt="comment" className="detail-thumb detail-thumb-sm" />
+                          </a>
+                        ) : null}
+                      </td>
+                      <td><StatusBadge status={c.status} /></td>
+                      <td className="muted">{fmtDate(c.publishedAt ?? c.createdAt)}</td>
+                      <td className="muted mono">{(c.fbCommentId ?? c.lastError ?? "").slice(0, 44)}</td>
+                    </tr>
+                  );
+                })}
+              </tbody>
+            </table>
+          )}
+        </div>
+      )}
+    </div>
+  );
+}
 
 async function loadPages<T>(fetchPage: (cursor?: string) => Promise<{ items: T[]; nextCursor: string | null }>) {
   const items: T[] = [];
@@ -30,6 +119,11 @@ export default function History() {
 
   const pageNameById = new Map((allPages.data ?? []).map((pg) => [pg.id, pg.name]));
   const externalComments = (comments.data?.items ?? []).filter((c) => !c.postId);
+  const extGroups = new Map<string, Comment[]>();
+  for (const c of externalComments) {
+    const key = c.fbPostId ?? c.fbTargetId;
+    extGroups.set(key, [...(extGroups.get(key) ?? []), c]);
+  }
 
   const items = (posts.data?.items ?? []).filter((p) => {
     if (fStatus !== "all" && p.status !== fStatus) return false;
@@ -204,33 +298,18 @@ export default function History() {
           })
         )}
       </div>
-      {externalComments.length ? (
+      {extGroups.size ? (
         <div className="card">
           <h3>คอมเมนต์โพสต์เก่า</h3>
-          <table>
-            <tbody>
-              {externalComments.map((c) => (
-                <tr key={c.id}>
-                  <td>{pageNameById.get(c.socialPageId) ?? "Page"}</td>
-                  <td className="detail-body">{(c.body ?? "").slice(0, 120) || (c.mediaId ? "(image)" : "")}</td>
-                  <td>
-                    {c.mediaId && mediaById.get(c.mediaId) ? (
-                      <a href={mediaById.get(c.mediaId)!.url} target="_blank" rel="noreferrer">
-                        <img
-                          src={mediaById.get(c.mediaId)!.thumbnailUrl ?? mediaById.get(c.mediaId)!.url}
-                          alt="comment"
-                          className="detail-thumb detail-thumb-sm"
-                        />
-                      </a>
-                    ) : null}
-                  </td>
-                  <td><StatusBadge status={c.status} /></td>
-                  <td className="muted">{fmtDate(c.publishedAt ?? c.createdAt)}</td>
-                  <td className="muted mono">{(c.fbCommentId ?? c.lastError ?? c.fbTargetId).slice(0, 40)}</td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
+          {[...extGroups.entries()].map(([fbPostId, cs]) => (
+            <ExternalPostGroup
+              key={fbPostId}
+              fbPostId={fbPostId}
+              comments={cs}
+              mediaById={mediaById}
+              pageName={pageNameById.get(cs[0]!.socialPageId) ?? "Page"}
+            />
+          ))}
         </div>
       ) : null}
       <div className="card">

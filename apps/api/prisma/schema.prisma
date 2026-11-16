@@ -530,6 +530,7 @@ model Comment {
   socialPageId    String        @map("social_page_id") @db.Uuid
   postId          String?       @map("post_id") @db.Uuid
   fbTargetId      String        @map("fb_target_id")
+  fbPostId        String?       @map("fb_post_id")
   parentCommentId String?       @map("parent_comment_id")
   body            String?
   mediaAssetId    String?       @map("media_asset_id") @db.Uuid

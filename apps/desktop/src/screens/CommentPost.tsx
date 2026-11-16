@@ -161,13 +161,14 @@ export default function CommentPost() {
     { key: POST_ROW, fbTargetId: post?.id ?? "", label: "ใต้โพสต์หลัก" },
     ...(photos ?? []).map((ph, i) => ({ key: ph.fbPhotoId, fbTargetId: ph.fbPhotoId, label: `ใต้รูป ${i + 1}` })),
   ];
-  type BatchItem = { pageId: string; fbTargetId: string; mediaId?: string; body?: string };
+  type BatchItem = { pageId: string; fbTargetId: string; fbPostId: string; mediaId?: string; body?: string };
   const comments: BatchItem[] = commentItems.flatMap(({ key, fbTargetId }): BatchItem[] => {
     const r = rows[key];
-    if (!r || !fbTargetId) return [];
+    if (!r || !fbTargetId || !post) return [];
     const body = r.body.trim();
-    if (!r.mediaIds.length) return body ? [{ pageId, fbTargetId, body }] : [];
-    return r.mediaIds.map((mediaId, i) => ({ pageId, fbTargetId, mediaId, ...(i === 0 && body ? { body } : {}) }));
+    const base = { pageId, fbTargetId, fbPostId: post.id };
+    if (!r.mediaIds.length) return body ? [{ ...base, body }] : [];
+    return r.mediaIds.map((mediaId, i) => ({ ...base, mediaId, ...(i === 0 && body ? { body } : {}) }));
   });
   const pendingMedia = Object.values(rows)
     .flatMap((r) => r.mediaIds)
@@ -215,14 +216,19 @@ export default function CommentPost() {
         {!pages.data?.length ? (
           <p className="muted">No enabled pages — enable pages in Page Management first.</p>
         ) : (
-          <select value={pageId} onChange={(e) => selectPage(e.target.value)} style={{ width: "100%" }}>
-            <option value="">— เลือกเพจ (ทีละเพจ) —</option>
+          <div className="page-grid">
             {pages.data.map((p) => (
-              <option key={p.id} value={p.id}>
-                {p.name}
-              </option>
+              <button key={p.id} type="button" className={`page-pick ${pageId === p.id ? "on" : ""}`} onClick={() => selectPage(p.id)}>
+                {p.avatarUrl ? (
+                  <img src={p.avatarUrl} alt="" />
+                ) : (
+                  <span className="page-pick-ph">{p.name.slice(0, 1)}</span>
+                )}
+                <span className="page-pick-name">{p.name}</span>
+                {pageId === p.id && <span className="page-pick-check">✓</span>}
+              </button>
             ))}
-          </select>
+          </div>
         )}
       </div>
 

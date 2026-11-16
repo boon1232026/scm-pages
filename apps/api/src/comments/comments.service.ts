@@ -47,6 +47,7 @@ export class CommentsService {
           workspaceId,
           socialPageId: page.id,
           fbTargetId: input.fbTargetId,
+          fbPostId: input.fbPostId ?? null,
           parentCommentId: input.parentCommentId ?? null,
           body: input.body ?? null,
           mediaAssetId: input.mediaId ?? null,
@@ -166,7 +167,7 @@ export class CommentsService {
   }
 
   private toDto(c: {
-    id: string; postId: string | null; socialPageId: string; fbTargetId: string; parentCommentId: string | null;
+    id: string; postId: string | null; socialPageId: string; fbTargetId: string; fbPostId: string | null; parentCommentId: string | null;
     body: string | null; mediaAssetId: string | null; fbCommentId: string | null;
     status: string; scheduledAt: Date | null; publishedAt: Date | null;
     lastError: unknown; createdAt: Date;
@@ -176,6 +177,7 @@ export class CommentsService {
       postId: c.postId,
       socialPageId: c.socialPageId,
       fbTargetId: c.fbTargetId,
+      fbPostId: c.fbPostId,
       parentCommentId: c.parentCommentId,
       body: c.body,
       mediaId: c.mediaAssetId,

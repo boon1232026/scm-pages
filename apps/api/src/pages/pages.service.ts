@@ -121,8 +121,17 @@ export class PagesService {
   async postPhotos(workspaceId: string, pageUuid: string, fbPostId: string) {
     const page = await this.findInWorkspace(workspaceId, pageUuid);
     const token = await this.accounts.getPageToken(page.id);
-    const photos = await this.meta.postPhotos(fbPostId, token);
-    return { photos };
+    const { post, photos } = await this.meta.postPhotos(fbPostId, token);
+    return {
+      post: {
+        id: post.id,
+        message: post.message ?? null,
+        createdTime: post.created_time,
+        permalinkUrl: post.permalink_url ?? null,
+        thumbnailUrl: post.full_picture ?? null,
+      },
+      photos,
+    };
   }
 
   async findInWorkspace(workspaceId: string, pageUuid: string) {

@@ -261,6 +261,7 @@ export type Post = z.infer<typeof postSchema>;
 const createCommentObject = z.object({
   pageId: uuid,
   fbTargetId: z.string().min(1),
+  fbPostId: z.string().optional(),
   parentCommentId: z.string().optional(),
   body: z.string().max(8000).optional(),
   mediaId: uuid.optional(),
@@ -292,6 +293,7 @@ export const commentSchema = z.object({
   postId: uuid.nullable(),
   socialPageId: uuid,
   fbTargetId: z.string(),
+  fbPostId: z.string().nullable(),
   parentCommentId: z.string().nullable(),
   body: z.string().nullable(),
   mediaId: uuid.nullable(),

@@ -161,10 +161,13 @@ export class MetaClient {
     return { items: res.data, nextCursor };
   }
 
-  /** Photos inside a post — photo ids usable as comment targets. */
-  async postPhotos(postId: string, pageToken: string): Promise<PostPhoto[]> {
-    const res = await this.get<{ attachments?: { data?: GraphAttachment[] } }>(`/${postId}`, {
-      fields: "attachments{media,type,subattachments{media,target,type}}",
+  /** Post summary + photos inside it — photo ids usable as comment targets. */
+  async postPhotos(
+    postId: string,
+    pageToken: string,
+  ): Promise<{ post: PageFeedItem; photos: PostPhoto[] }> {
+    const res = await this.get<PageFeedItem & { attachments?: { data?: GraphAttachment[] } }>(`/${postId}`, {
+      fields: "id,message,created_time,permalink_url,full_picture,attachments{media,type,subattachments{media,target,type}}",
       access_token: pageToken,
     });
     const out: PostPhoto[] = [];
@@ -178,7 +181,8 @@ export class MetaClient {
         out.push({ fbPhotoId: att.target.id, imageUrl: att.media?.image?.src ?? null });
       }
     }
-    return out;
+    const { attachments: _a, ...post } = res;
+    return { post, photos: out };
   }
 
   // ---------- publishing ----------

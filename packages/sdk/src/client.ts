@@ -156,7 +156,7 @@ export class SocialCommerceClient {
   pageFeed = (id: string, q?: { limit?: number; cursor?: string }) =>
     this.get<Page<FbFeedPost>>(Routes.pages.feed(id), { limit: q?.limit, cursor: q?.cursor });
   postPhotos = (pageId: string, fbPostId: string) =>
-    this.get<{ photos: FbPostPhoto[] }>(Routes.pages.postPhotos(pageId, fbPostId));
+    this.get<{ post: FbFeedPost; photos: FbPostPhoto[] }>(Routes.pages.postPhotos(pageId, fbPostId));
 
   // ---------- media ----------
   createUpload = (b: CreateUploadInput) => this.post<UploadTicket>(Routes.media.uploads, b);
