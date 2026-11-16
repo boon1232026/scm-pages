@@ -282,6 +282,7 @@ button.ghost { background: transparent; border: 1px solid var(--border, #2a3346)
 .dash-card-head h3 { margin: 0; }
 .dash-card-head .link { color: var(--accent); text-decoration: none; font-size: 13px; }
 .dash-side { display: flex; flex-direction: column; gap: 12px; }
+.dash-col { display: flex; flex-direction: column; gap: 12px; }
 .dash-side .card h3 { margin-top: 0; }
 
 .dash-empty { text-align: center; padding: 28px 0; color: var(--muted); }
