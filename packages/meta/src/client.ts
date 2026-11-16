@@ -176,7 +176,7 @@ export class MetaClient {
     pageToken: string,
   ): Promise<{ post: PageFeedItem; photos: PostPhoto[] }> {
     const res = await this.get<PageFeedItem & { attachments?: { data?: GraphAttachment[] } }>(`/${postId}`, {
-      fields: "id,message,created_time,permalink_url,full_picture,attachments{id,media,type,subattachments.limit(100){media,target,type}}",
+      fields: "id,message,created_time,permalink_url,full_picture,attachments{id,media,type,target,subattachments.limit(100){media,target,type}}",
       access_token: pageToken,
     });
     const out: PostPhoto[] = [];
