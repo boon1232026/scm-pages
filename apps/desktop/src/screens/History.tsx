@@ -37,21 +37,29 @@ function ExternalPostGroup({ fbPostId, comments, mediaById, pageName }: {
 
   return (
     <div className="post-row">
-      <div className="row-between">
-        <div>
-          <span className="badge">โพสต์เก่า</span>{" "}
-          {Object.entries(counts).map(([s, n]) => <span key={s} style={{ marginRight: 6 }}><StatusBadge status={s} /> ×{n} </span>)}
-          <p>
-            {info?.post.thumbnailUrl && <img src={info.post.thumbnailUrl} alt="" className="detail-thumb detail-thumb-sm" style={{ verticalAlign: "middle", marginRight: 8 }} />}
-            {(info?.post.message ?? `${comments.length} คอมเมนต์`).slice(0, 140)}
-          </p>
-          <p className="muted">
-            {pageName} · {comments.length} comment(s)
-            {info?.post.permalinkUrl && <> · <a href={info.post.permalinkUrl} target="_blank" rel="noreferrer" className="link">เปิดโพสต์</a></>}
-          </p>
+      <div className="hrow">
+        {info?.post.thumbnailUrl ? (
+          <img className="hrow-thumb" src={info.post.thumbnailUrl} alt="" />
+        ) : (
+          <div className="hrow-thumb hrow-thumb-ph">◫</div>
+        )}
+        <div className="hrow-body">
+          <div className="hrow-title">{(info?.post.message ?? "").slice(0, 160) || "(โพสต์เก่า — ไม่มีข้อความ)"}</div>
+          <div className="hrow-meta">
+            <span className="badge">โพสต์เก่า</span>
+            <span>{pageName}</span>
+            <span>{comments.length} คอมเมนต์</span>
+            {info?.post.createdTime && <span>{fmtDate(info.post.createdTime)}</span>}
+            {info?.post.permalinkUrl && <a href={info.post.permalinkUrl} target="_blank" rel="noreferrer" className="link">เปิดโพสต์ ↗</a>}
+          </div>
         </div>
-        <div className="actions">
-          <button className="ghost" onClick={expand}>{open ? "Hide detail" : "Detail"}</button>
+        <div className="hrow-side">
+          <div className="hrow-statuses">
+            {Object.entries(counts).map(([s, n]) => (
+              <span key={s} className="hrow-stat"><StatusBadge status={s} />{n}</span>
+            ))}
+          </div>
+          <button className="ghost" onClick={expand}>{open ? "ซ่อน" : "รายละเอียด"}</button>
         </div>
       </div>
       {open && (
@@ -180,19 +188,29 @@ export default function History() {
             };
             return (
               <div key={p.id} className="post-row">
-                <div className="row-between">
-                  <div>
-                    <span className="badge">{p.kind}</span> <StatusBadge status={p.status} />{" "}
-                    <span className="muted">{fmtDate(p.scheduledAt ?? p.createdAt)}</span>
-                    <p>{p.body.slice(0, 140)}</p>
-                    <p className="muted">
-                      {p.mediaIds.length ? `${p.mediaIds.length} photo(s)` : "no photo"} · {postComments.length} comment(s) ·{" "}
-                      {p.pages.length} page(s)
-                    </p>
+                <div className="hrow">
+                  {(() => {
+                    const m = p.mediaIds.length ? mediaById.get(p.mediaIds[0]!) : null;
+                    return m?.thumbnailUrl || m?.url ? (
+                      <img className="hrow-thumb" src={m.thumbnailUrl ?? m.url} alt="" />
+                    ) : (
+                      <div className="hrow-thumb hrow-thumb-ph">✎</div>
+                    );
+                  })()}
+                  <div className="hrow-body">
+                    <div className="hrow-title">{p.body.slice(0, 160) || "(ไม่มีข้อความ)"}</div>
+                    <div className="hrow-meta">
+                      <span className="badge">{p.kind}</span>
+                      <span>{fmtDate(p.scheduledAt ?? p.createdAt)}</span>
+                      {p.mediaIds.length > 0 && <span>◫ {p.mediaIds.length} รูป</span>}
+                      <span>✱ {postComments.length} คอมเมนต์</span>
+                      <span>▦ {p.pages.length} เพจ</span>
+                    </div>
                   </div>
-                  <div className="actions">
+                  <div className="hrow-side">
+                    <StatusBadge status={p.status} />
                     <button className="ghost" onClick={() => setOpen(expanded ? null : p.id)}>
-                      {expanded ? "Hide detail" : "Detail"}
+                      {expanded ? "ซ่อน" : "รายละเอียด"}
                     </button>
                     {p.status === "failed" || p.status === "partial" ? (
                       <button onClick={() => api.retryPost(p.id).then(posts.refetch)}>Retry failed</button>
