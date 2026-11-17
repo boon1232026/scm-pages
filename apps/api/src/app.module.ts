@@ -5,6 +5,7 @@ import { ThrottlerGuard, ThrottlerModule } from "@nestjs/throttler";
 import { validateEnv } from "./config/env";
 import { PrismaModule } from "./prisma/prisma.module";
 import { HealthController } from "./health/health.controller";
+import { LegalController } from "./legal/legal.controller";
 import { ApiErrorFilter } from "./common/http-error.filter";
 import { AuthModule } from "./auth/auth.module";
 import { UsersModule } from "./users/users.module";
@@ -46,7 +47,7 @@ import { ConfigurationsModule } from "./configurations/configurations.module";
     TemplatesModule,
     ConfigurationsModule,
   ],
-  controllers: [HealthController],
+  controllers: [HealthController, LegalController],
   providers: [
     { provide: APP_FILTER, useClass: ApiErrorFilter },
     { provide: APP_GUARD, useClass: ThrottlerGuard },
