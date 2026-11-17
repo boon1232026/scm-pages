@@ -8,6 +8,7 @@ import {
   type CreateCommentBatchInput,
   type CreateCommentInput,
   type CreateUploadInput,
+  type CompleteUploadsBatchResult,
   type SocialAccount,
   type SocialPage,
   type PageHealth,
@@ -31,7 +32,7 @@ export interface SdkOptions {
   getAccessToken: () => string | null;
   getWorkspaceId?: () => string | null;
   /** Called when the API returns 401 — implement refresh + retry here if desired. */
-  onUnauthorized?: () => Promise<boolean>;
+  onUnauthorized?: (failedToken: string | null) => Promise<boolean>;
   fetchImpl?: typeof fetch;
 }
 
@@ -85,7 +86,7 @@ export class SocialCommerceClient {
     const res = await this.fetchImpl(url, init);
 
     if (res.status === 401 && opts?.retry !== false && this.opts.onUnauthorized) {
-      const recovered = await this.opts.onUnauthorized();
+      const recovered = await this.opts.onUnauthorized(token);
       if (recovered) return this.request<T>(method, path, body, { ...opts, retry: false });
     }
 
@@ -129,9 +130,11 @@ export class SocialCommerceClient {
     this.post<AuthResponse>(Routes.auth.register, b);
   login = (b: { email: string; password: string }) => this.post<AuthResponse>(Routes.auth.login, b);
   refresh = (refreshToken: string) =>
-    this.post<{ accessToken: string; refreshToken: string; accessTokenExpiresAt: string }>(
+    this.request<{ accessToken: string; refreshToken: string; accessTokenExpiresAt: string }>(
+      "POST",
       Routes.auth.refresh,
       { refreshToken },
+      { retry: false },
     );
   logout = (refreshToken: string) => this.post<void>(Routes.auth.logout, { refreshToken });
   startMetaOAuth = (redirectUri?: string) =>
@@ -163,7 +166,11 @@ export class SocialCommerceClient {
 
   // ---------- media ----------
   createUpload = (b: CreateUploadInput) => this.post<UploadTicket>(Routes.media.uploads, b);
+  createUploadsBatch = (files: CreateUploadInput[]) =>
+    this.post<{ tickets: UploadTicket[] }>(Routes.media.uploadsBatch, { files });
   completeUpload = (id: string) => this.post<MediaAsset>(Routes.media.complete(id));
+  completeUploadsBatch = (mediaIds: string[]) =>
+    this.post<CompleteUploadsBatchResult>(Routes.media.completeBatch, { mediaIds });
   listMedia = (q?: { category?: string; search?: string; cursor?: string }) =>
     this.get<Page<MediaAsset>>(Routes.media.root, { category: q?.category, q: q?.search, cursor: q?.cursor });
   updateMedia = (id: string, b: { name?: string; category?: string | null; tags?: string[] }) =>

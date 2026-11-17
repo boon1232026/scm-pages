@@ -147,6 +147,12 @@ export const createUploadSchema = z.object({
   productId: uuid.optional(),
 });
 export type CreateUploadInput = z.infer<typeof createUploadSchema>;
+export const createUploadsBatchSchema = z.object({
+  files: z.array(createUploadSchema).min(1).max(8),
+});
+export const completeUploadsBatchSchema = z.object({
+  mediaIds: z.array(uuid).min(1).max(8).refine((ids) => new Set(ids).size === ids.length, "duplicate media ID"),
+});
 
 export const mediaAssetSchema = z.object({
   id: uuid,
@@ -171,6 +177,9 @@ export const uploadTicketSchema = z.object({
   expiresAt: isoDateTime,
 });
 export type UploadTicket = z.infer<typeof uploadTicketSchema>;
+export type CompleteUploadsBatchResult = {
+  results: ({ mediaId: string; asset: MediaAsset; error?: never } | { mediaId: string; error: string; asset?: never })[];
+};
 
 export const updateMediaSchema = z.object({
   name: z.string().min(1).max(255).optional(),

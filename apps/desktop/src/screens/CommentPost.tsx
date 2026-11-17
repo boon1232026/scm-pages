@@ -2,6 +2,7 @@ import { useEffect, useRef, useState } from "react";
 import { Link } from "react-router-dom";
 import type { Comment, FbComment, FbFeedPost, FbPostPhoto, MediaAsset } from "@scm/contracts";
 import { api } from "../lib/api";
+import { uploadFilesFast } from "../lib/bulk-upload";
 import { Err, fmtDate, StatusBadge, useQuery } from "../lib/hooks";
 
 type Row = { body: string; mediaIds: string[]; uploadError: string | null };
@@ -45,13 +46,14 @@ export default function CommentPost() {
   const [error, setError] = useState<string | null>(null);
   const [created, setCreated] = useState<number | null>(null);
   const [uploading, setUploading] = useState<string | null>(null);
+  const [uploadedMedia, setUploadedMedia] = useState<Record<string, MediaAsset>>({});
   const [dragOver, setDragOver] = useState<string | null>(null);
   const [queue, setQueue] = useState<{ done: number; total: number } | null>(null);
   const fileRef = useRef<HTMLInputElement>(null);
   const fileTargetRef = useRef<string>(POST_ROW);
 
   const items = media.data?.items ?? [];
-  const byId = new Map(items.map((m) => [m.id, m]));
+  const byId = new Map([...Object.entries(uploadedMedia), ...items.map((m) => [m.id, m] as const)]);
 
   useEffect(() => {
     const t = setInterval(() => {
@@ -146,8 +148,8 @@ export default function CommentPost() {
     }
   }
 
-  async function upload(target: string, file: File, track = true) {
-    if (track) setUploading(target);
+  async function upload(target: string, file: File) {
+    setUploading(target);
     setError(null);
     try {
       if (!["image/png", "image/jpeg", "image/webp"].includes(file.type)) throw new Error("รองรับเฉพาะ PNG, JPEG และ WebP");
@@ -158,35 +160,43 @@ export default function CommentPost() {
       });
       const put = await globalThis.fetch(ticket.uploadUrl, { method: "PUT", body: file });
       if (!put.ok) throw new Error(`S3 upload failed: HTTP ${put.status}`);
-      await api.completeUpload(ticket.mediaId);
+      const asset = await api.completeUpload(ticket.mediaId);
+      setUploadedMedia((cur) => ({ ...cur, [asset.id]: asset }));
       setRows((cur) => ({ ...cur, [target]: { ...(cur[target] ?? emptyRow), mediaIds: [...(cur[target]?.mediaIds ?? []), ticket.mediaId], uploadError: null } }));
       media.refetch();
-      setTimeout(media.refetch, 1000);
-      setTimeout(media.refetch, 2500);
     } catch (e) {
       const message = e instanceof Error ? e.message : String(e);
       setRows((cur) => ({ ...cur, [target]: { ...(cur[target] ?? emptyRow), uploadError: message } }));
     } finally {
-      if (track) setUploading(null);
+      setUploading(null);
     }
   }
 
   async function uploadMany(files: File[], target: string) {
+    if (files.length === 1) {
+      await upload(target, files[0]!);
+      return;
+    }
     setQueue({ done: 0, total: files.length });
     setUploading(target);
-    let done = 0;
     try {
-      for (let i = 0; i < files.length; i += 4) {
-        await Promise.all(
-          files.slice(i, i + 4).map(async (f) => {
-            await upload(target, f, false);
-            setQueue({ done: ++done, total: files.length });
-          }),
-        );
-      }
+      await uploadFilesFast(files.map((file) => ({ file, target })), {
+        uploaded: ({ target: dest }, asset) => {
+          setUploadedMedia((cur) => ({ ...cur, [asset.id]: asset }));
+          setRows((cur) => ({ ...cur, [dest]: {
+            ...(cur[dest] ?? emptyRow),
+            mediaIds: [...(cur[dest]?.mediaIds ?? []), asset.id],
+          } }));
+        },
+        failed: ({ target: dest }, message) => setRows((cur) => ({ ...cur, [dest]: {
+          ...(cur[dest] ?? emptyRow), uploadError: message,
+        } })),
+        progress: (done, total) => setQueue({ done, total }),
+      });
     } finally {
       setUploading(null);
       setQueue(null);
+      media.refetch();
     }
   }
 

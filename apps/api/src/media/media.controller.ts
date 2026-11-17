@@ -16,7 +16,13 @@ import { JwtAuthGuard } from "../auth/jwt-auth.guard";
 import { CurrentUser, RequireRole, WorkspaceGuard, WorkspaceId } from "../common/workspace.guard";
 import { ZodPipe } from "../common/zod-validation.pipe";
 import { MediaService } from "./media.service";
-import { createUploadSchema, updateMediaSchema } from "@scm/contracts";
+import {
+  completeUploadsBatchSchema,
+  createUploadSchema,
+  createUploadsBatchSchema,
+  updateMediaSchema,
+  type CreateUploadInput,
+} from "@scm/contracts";
 
 @ApiTags("media")
 @ApiBearerAuth()
@@ -34,6 +40,25 @@ export class MediaController {
     body: { fileName: string; mimeType: "image/jpeg" | "image/png" | "image/webp"; sizeBytes: number; category?: string; productId?: string },
   ) {
     return this.media.createUpload(workspaceId!, userId, body);
+  }
+
+  @Post("uploads/batch")
+  @RequireRole("member")
+  createUploadsBatch(
+    @WorkspaceId() workspaceId: string,
+    @CurrentUser() userId: string,
+    @Body(new ZodPipe(createUploadsBatchSchema)) body: { files: CreateUploadInput[] },
+  ) {
+    return this.media.createUploadsBatch(workspaceId!, userId, body.files);
+  }
+
+  @Post("complete/batch")
+  @RequireRole("member")
+  completeUploadsBatch(
+    @WorkspaceId() workspaceId: string,
+    @Body(new ZodPipe(completeUploadsBatchSchema)) body: { mediaIds: string[] },
+  ) {
+    return this.media.completeUploadsBatch(workspaceId!, body.mediaIds);
   }
 
   @Post(":id/complete")

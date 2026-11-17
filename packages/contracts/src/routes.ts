@@ -35,6 +35,8 @@ export const Routes = {
   media: {
     root: "/media",
     uploads: "/media/uploads",
+    uploadsBatch: "/media/uploads/batch",
+    completeBatch: "/media/complete/batch",
     byId: (id: string) => `/media/${id}`,
     complete: (id: string) => `/media/${id}/complete`,
   },

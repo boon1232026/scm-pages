@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from "react";
 import type { MediaAsset, Post } from "@scm/contracts";
 import { api } from "../lib/api";
+import { uploadFilesFast } from "../lib/bulk-upload";
 import { Err, fmtDate, StatusBadge, useQuery } from "../lib/hooks";
 
 /** Single workspace: compose post + first-comment in one pass, publish to all selected pages. */
@@ -53,6 +54,7 @@ export default function Compose() {
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
   const [uploading, setUploading] = useState<"post" | string | null>(null);
+  const [uploadedMedia, setUploadedMedia] = useState<Record<string, MediaAsset>>({});
   const [showPostLib, setShowPostLib] = useState(false);
   const [showCommentLib, setShowCommentLib] = useState<string | null>(null);
   const postFileRef = useRef<HTMLInputElement>(null);
@@ -73,7 +75,7 @@ export default function Compose() {
   }
 
   const items = media.data?.items ?? [];
-  const byId = new Map(items.map((m) => [m.id, m]));
+  const byId = new Map([...Object.entries(uploadedMedia), ...items.map((m) => [m.id, m] as const)]);
   const attachedPost = mediaIds.map((id) => byId.get(id)).filter((m) => !!m);
 
   useEffect(() => {
@@ -86,8 +88,8 @@ export default function Compose() {
     return () => clearInterval(t);
   });
 
-  async function upload(file: File, target: "post" | string, track = true) {
-    if (track) setUploading(target);
+  async function upload(file: File, target: "post" | string) {
+    setUploading(target);
     setError(null);
     try {
       if (!["image/png", "image/jpeg", "image/webp"].includes(file.type)) throw new Error("รองรับเฉพาะ PNG, JPEG และ WebP");
@@ -98,15 +100,14 @@ export default function Compose() {
       });
       const put = await globalThis.fetch(ticket.uploadUrl, { method: "PUT", body: file });
       if (!put.ok) throw new Error(`S3 upload failed: HTTP ${put.status}`);
-      await api.completeUpload(ticket.mediaId);
+      const asset = await api.completeUpload(ticket.mediaId);
+      setUploadedMedia((cur) => ({ ...cur, [asset.id]: asset }));
       if (target === "post") setMediaIds((cur) => [...cur, ticket.mediaId]);
       else if (target.startsWith("detail:")) {
         const id = target.slice(7);
         setProductDetails((cur) => ({ ...cur, [id]: { ...(cur[id] ?? emptyDetail), mediaIds: [...(cur[id]?.mediaIds ?? []), ticket.mediaId], uploadError: null } }));
       } else setDraftComments((cur) => cur.map((c) => (c.id === target ? { ...c, mediaId: ticket.mediaId, uploadState: undefined, uploadError: undefined } : c)));
       media.refetch();
-      setTimeout(media.refetch, 1000);
-      setTimeout(media.refetch, 2500);
     } catch (e) {
       const message = e instanceof Error ? e.message : String(e);
       if (target === "post") setError(message);
@@ -115,28 +116,45 @@ export default function Compose() {
         setProductDetails((cur) => ({ ...cur, [id]: { ...(cur[id] ?? emptyDetail), uploadError: message } }));
       } else setDraftComments((cur) => cur.map((c) => c.id === target ? { ...c, uploadState: "failed", uploadError: message } : c));
     } finally {
-      if (track) setUploading(null);
-    }
-  }
-
-  async function uploadChunks<T>(items: T[], run: (item: T) => Promise<void>) {
-    for (let i = 0; i < items.length; i += 4) {
-      await Promise.all(items.slice(i, i + 4).map(run));
+      setUploading(null);
     }
   }
 
   async function uploadMany(files: File[], target: "post" | string) {
+    if (files.length === 1) {
+      await upload(files[0]!, target);
+      return;
+    }
     setQueue({ done: 0, total: files.length });
     setUploading(target);
-    let done = 0;
     try {
-      await uploadChunks(files, async (f) => {
-        await upload(f, target, false);
-        setQueue({ done: ++done, total: files.length });
+      await uploadFilesFast(files.map((file) => ({ file, target })), {
+        uploaded: ({ target: dest }, asset) => {
+          setUploadedMedia((cur) => ({ ...cur, [asset.id]: asset }));
+          if (dest === "post") setMediaIds((cur) => [...cur, asset.id]);
+          else if (dest.startsWith("detail:")) {
+            const id = dest.slice(7);
+            setProductDetails((cur) => ({ ...cur, [id]: {
+              ...(cur[id] ?? emptyDetail),
+              mediaIds: [...(cur[id]?.mediaIds ?? []), asset.id],
+            } }));
+          } else setDraftComments((cur) => cur.map((c) => c.id === dest
+            ? { ...c, mediaId: asset.id, uploadState: undefined, uploadError: undefined } : c));
+        },
+        failed: ({ target: dest }, message) => {
+          if (dest === "post") setError(message);
+          else if (dest.startsWith("detail:")) {
+            const id = dest.slice(7);
+            setProductDetails((cur) => ({ ...cur, [id]: { ...(cur[id] ?? emptyDetail), uploadError: message } }));
+          } else setDraftComments((cur) => cur.map((c) => c.id === dest
+            ? { ...c, uploadState: "failed", uploadError: message } : c));
+        },
+        progress: (done, total) => setQueue({ done, total }),
       });
     } finally {
       setUploading(null);
       setQueue(null);
+      media.refetch();
     }
   }
 
@@ -147,12 +165,19 @@ export default function Compose() {
     setUseFirstComment(true);
     setBatchActive(true);
     try {
-      await uploadChunks(
-        files.map((file, i) => ({ file, rowId: rows[i]!.id })),
-        ({ file, rowId }) => upload(file, rowId, false),
-      );
+      await uploadFilesFast(files.map((file, i) => ({ file, target: rows[i]!.id })), {
+        uploaded: ({ target }, asset) => {
+          setUploadedMedia((cur) => ({ ...cur, [asset.id]: asset }));
+          setDraftComments((cur) => cur.map((c) => c.id === target
+            ? { ...c, mediaId: asset.id, uploadState: undefined, uploadError: undefined } : c));
+        },
+        failed: ({ target }, message) => setDraftComments((cur) => cur.map((c) => c.id === target
+          ? { ...c, uploadState: "failed", uploadError: message } : c)),
+        progress: () => undefined,
+      });
     } finally {
       setBatchActive(false);
+      media.refetch();
     }
   }
 
@@ -402,7 +427,7 @@ export default function Compose() {
                         e.preventDefault();
                         setDetailDragOver(null);
                         const files = Array.from(e.dataTransfer.files);
-                        if (files.length) void (async () => { for (const f of files) await upload(f, `detail:${id}`); })();
+                        if (files.length) void uploadMany(files, `detail:${id}`);
                       }}
                     >
                       {m && <img src={m.thumbnailUrl ?? m.url} alt={m.name} />}

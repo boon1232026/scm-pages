@@ -7,7 +7,7 @@ import {
 import { PrismaService } from "../prisma/prisma.service";
 import { S3Service } from "./s3.service";
 import { QueueService } from "../queue/queue.service";
-import type { MediaAsset } from "@scm/contracts";
+import type { CreateUploadInput, MediaAsset } from "@scm/contracts";
 
 @Injectable()
 export class MediaService implements OnModuleInit {
@@ -54,6 +54,25 @@ export class MediaService implements OnModuleInit {
       uploadUrl,
       expiresAt: new Date(Date.now() + 900_000).toISOString(),
     };
+  }
+
+  async createUploadsBatch(workspaceId: string, uploaderId: string, files: CreateUploadInput[]) {
+    // Each ticket uses the same workspace-bound record and signed PUT as the single-file flow.
+    const tickets = await Promise.all(files.map((file) => this.createUpload(workspaceId, uploaderId, file)));
+    return { tickets };
+  }
+
+  async completeUploadsBatch(workspaceId: string, mediaIds: string[]) {
+    // Do not let an incomplete PUT hide successful files in the same batch.
+    const results = await Promise.all(mediaIds.map(async (mediaId) => {
+      try {
+        const asset = await this.complete(workspaceId, mediaId);
+        return { mediaId, asset };
+      } catch (e) {
+        return { mediaId, error: e instanceof Error ? e.message : "Upload completion failed" };
+      }
+    }));
+    return { results };
   }
 
   /**

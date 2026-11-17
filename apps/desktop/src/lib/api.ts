@@ -1,4 +1,4 @@
-import { SocialCommerceClient } from "@scm/sdk";
+import { ApiRequestError, SocialCommerceClient } from "@scm/sdk";
 
 const API_BASE_URL = import.meta.env.VITE_API_BASE_URL ?? "http://localhost:3001";
 const LS_KEY = "scm.session.v1";
@@ -26,6 +26,7 @@ function save(s: StoredSession | null) {
 
 let current = load();
 const listeners = new Set<() => void>();
+let refreshInFlight: Promise<boolean> | null = null;
 
 export const session = {
   getAccessToken: () => current?.accessToken ?? null,
@@ -59,19 +60,29 @@ export const api = new SocialCommerceClient({
   baseUrl: API_BASE_URL,
   getAccessToken: session.getAccessToken,
   getWorkspaceId: session.getWorkspaceId,
-  onUnauthorized: async () => {
+  onUnauthorized: async (failedToken) => {
+    if (session.getAccessToken() !== failedToken) return true;
+    if (refreshInFlight) return refreshInFlight;
     const rt = session.getRefreshToken();
     if (!rt) return false;
-    try {
-      const r = await api.refresh(rt);
-      const cur = load();
-      if (!cur) return false;
-      session.set({ ...cur, accessToken: r.accessToken, refreshToken: r.refreshToken });
-      return true;
-    } catch {
-      session.clear();
-      return false;
-    }
+    refreshInFlight = (async () => {
+      try {
+        const r = await api.refresh(rt);
+        const cur = load();
+        if (!cur || cur.refreshToken !== rt) return false;
+        session.set({ ...cur, accessToken: r.accessToken, refreshToken: r.refreshToken });
+        return true;
+      } catch (e) {
+        // An outage must not log the user out; only an invalid refresh token does.
+        if (e instanceof ApiRequestError && e.status === 401 && session.getRefreshToken() === rt) {
+          session.clear();
+        }
+        return false;
+      } finally {
+        refreshInFlight = null;
+      }
+    })();
+    return refreshInFlight;
   },
 });
 
