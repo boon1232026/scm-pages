@@ -698,7 +698,7 @@ export default function Compose() {
                 <button className="link" onClick={() => setManualMode(false)}>ปิด</button>
               </div>
               <p className="muted">
-                เปิดเพจ → สร้างโพสต์ใหม่ด้วยข้อความและรูปด้านล่าง (เลือกโพสต์ในชื่อ <strong>เพจ</strong>) แล้วกลับมาติ๊กถูก — รูปแนบ {mediaIds.length} ใบต้องแนบทั้งหมดตามลำดับเดียวกัน
+                กด "เปิดเพจ + คัดลอกข้อความ" → สร้างโพสต์ใหม่บนเพจ (เลือกโพสต์ในชื่อ <strong>เพจ</strong>) กด <strong>Ctrl+V</strong> วางข้อความ แนบรูป {mediaIds.length} ใบตามลำดับเดียวกัน แล้วกลับมาติ๊กถูก
               </p>
               {[...selected].map((pageDbId) => {
                 const p = pages.data?.find((x) => x.id === pageDbId);
@@ -724,10 +724,15 @@ export default function Compose() {
                       </div>
                     </div>
                     <div style={{ display: "flex", flexDirection: "column", gap: 4, flexShrink: 0 }}>
-                      <button className="ghost" onClick={() => void openLink(`https://www.facebook.com/${p.pageId}`)}>เปิดเพจบน FB ↗</button>
-                      {body.trim() && (
-                        <button className="ghost" onClick={() => void navigator.clipboard.writeText(body.trim())}>คัดลอกข้อความ</button>
-                      )}
+                      <button
+                        className="ghost"
+                        onClick={() => {
+                          if (body.trim()) void navigator.clipboard.writeText(body.trim());
+                          void openLink(`https://www.facebook.com/${p.pageId}`);
+                        }}
+                      >
+                        เปิดเพจ + คัดลอกข้อความ ↗
+                      </button>
                       {mediaIds.length > 0 && (
                         <button className="ghost" onClick={() => void downloadAll()}>ดาวน์โหลดรูป {mediaIds.length} ใบ</button>
                       )}

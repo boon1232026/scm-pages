@@ -5,6 +5,7 @@ import type { Comment, FbComment, FbFeedPost, FbPostPhoto, MediaAsset } from "@s
 import { api } from "../lib/api";
 import { uploadFilesFast } from "../lib/bulk-upload";
 import { submitCommentBatches } from "../lib/comment-batch";
+import { copyImageToClipboard } from "../lib/clipboard-image";
 import { Err, fmtDate, StatusBadge, useQuery } from "../lib/hooks";
 
 type Row = { body: string; mediaIds: string[]; uploadError: string | null };
@@ -565,7 +566,7 @@ export default function CommentPost() {
             <button className="link" onClick={() => setManualMode(false)}>ปิด</button>
           </div>
           <p className="muted">
-            กด "เปิดเป้าหมาย" เพื่อไปคอมเมนต์บน Facebook เอง — ในช่องคอมเมนต์เลือกโพสต์ในชื่อ <strong>เพจ</strong> ให้เหมือนที่ระบบจะส่ง แล้วกลับมาติ๊กถูก
+            กด "เปิด FB + คัดลอกข้อความ" แล้วกด "คัดลอกรูป" — บน Facebook แค่ <strong>Ctrl+V วางข้อความ → Ctrl+V วางรูป → Enter</strong> เลือกโพสต์ในชื่อ <strong>เพจ</strong> ให้เหมือนที่ระบบจะส่ง แล้วกลับมาติ๊กถูก
           </p>
           {comments.length === 0 && (
             <p className="muted">คิวยังว่าง — พิมพ์ข้อความหรือแนบรูปใต้ "โพสต์หลัก / รูปสินค้า" ด้านบนอย่างน้อย 1 จุด แล้วรายการจะขึ้นที่นี่ให้ทำตาม</p>
@@ -595,12 +596,22 @@ export default function CommentPost() {
                   )}
                 </div>
                 <div style={{ display: "flex", flexDirection: "column", gap: 4, flexShrink: 0 }}>
-                  <button className="ghost" onClick={() => void openLink(targetUrl(c.fbTargetId))}>เปิดเป้าหมายบน FB ↗</button>
-                  {c.body && (
-                    <button className="ghost" onClick={() => void navigator.clipboard.writeText(c.body!)}>คัดลอกข้อความ</button>
-                  )}
+                  <button
+                    className="ghost"
+                    onClick={() => {
+                      if (c.body) void navigator.clipboard.writeText(c.body);
+                      void openLink(targetUrl(c.fbTargetId));
+                    }}
+                  >
+                    เปิด FB + คัดลอกข้อความ ↗
+                  </button>
                   {cm && (
-                    <button className="ghost" onClick={() => void downloadMedia(cm)}>ดาวน์โหลดรูป</button>
+                    <button
+                      className="ghost"
+                      onClick={() => void copyImageToClipboard(cm.url).then((ok) => { if (!ok) return downloadMedia(cm); })}
+                    >
+                      คัดลอกรูป
+                    </button>
                   )}
                 </div>
               </div>
