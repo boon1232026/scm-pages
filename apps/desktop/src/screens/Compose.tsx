@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState } from "react";
+import { openUrl } from "@tauri-apps/plugin-opener";
 import type { MediaAsset, Post } from "@scm/contracts";
 import { api } from "../lib/api";
 import { uploadFilesFast } from "../lib/bulk-upload";
@@ -50,6 +51,8 @@ export default function Compose() {
   const [postDragOver, setPostDragOver] = useState(false);
   const [detailDragOver, setDetailDragOver] = useState<string | null>(null);
   const [queue, setQueue] = useState<{ done: number; total: number } | null>(null);
+  const [manualMode, setManualMode] = useState(false);
+  const [manualDone, setManualDone] = useState<Set<string>>(new Set());
   const [trackPost, setTrackPost] = useState<Post | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
@@ -196,6 +199,69 @@ export default function Compose() {
     .filter((id): id is string => !!id)
     .some((id) => byId.get(id)?.status !== "ready");
   const commentCount = detailComments.length + (useFirstComment ? activeComments.length : 0);
+
+  // ---- Manual mode: prepare post content; a person publishes on Facebook by hand.
+  const manualSig = `${body.trim()}|${mediaIds.join(",")}`;
+  const canManual = selected.size > 0 && (body.trim().length > 0 || mediaIds.length > 0) && uploading === null && !batchActive;
+  const MANUAL_LS = "scm.manual.compose";
+
+  function manualDoneMap(): Record<string, string> {
+    try {
+      return JSON.parse(localStorage.getItem(MANUAL_LS) ?? "{}") as Record<string, string>;
+    } catch {
+      return {};
+    }
+  }
+
+  useEffect(() => {
+    const saved = manualDoneMap();
+    setManualDone(new Set(Object.keys(saved).filter((id) => saved[id] === manualSig)));
+  }, [manualSig, manualMode]);
+
+  function toggleManualDone(pageDbId: string) {
+    setManualDone((cur) => {
+      const next = new Set(cur);
+      const saved = manualDoneMap();
+      if (next.has(pageDbId)) {
+        next.delete(pageDbId);
+        delete saved[pageDbId];
+      } else {
+        next.add(pageDbId);
+        saved[pageDbId] = manualSig;
+      }
+      localStorage.setItem(MANUAL_LS, JSON.stringify(saved));
+      return next;
+    });
+  }
+
+  async function openLink(url: string) {
+    try {
+      await openUrl(url);
+    } catch {
+      window.open(url, "_blank");
+    }
+  }
+
+  async function downloadMedia(asset: MediaAsset) {
+    try {
+      const blob = await (await fetch(asset.url)).blob();
+      const href = URL.createObjectURL(blob);
+      const a = document.createElement("a");
+      a.href = href;
+      a.download = asset.name || `${asset.id}.jpg`;
+      a.click();
+      URL.revokeObjectURL(href);
+    } catch {
+      void openLink(asset.url);
+    }
+  }
+
+  async function downloadAll() {
+    for (const id of mediaIds) {
+      const asset = byId.get(id);
+      if (asset) await downloadMedia(asset);
+    }
+  }
 
   async function publish() {
     setBusy(true);
@@ -606,6 +672,59 @@ export default function Compose() {
             )}
           </div>
 
+          {manualMode && (
+            <div className="card">
+              <div className="sec-head">
+                <h3>คิวโพสต์เอง — สร้างโพสต์บน Facebook ด้วยตัวเองทีละเพจ</h3>
+                <span className="muted" style={{ marginLeft: "auto" }}>ทำแล้ว {manualDone.size}/{selected.size}</span>
+                <button className="link" onClick={() => setManualMode(false)}>ปิด</button>
+              </div>
+              <p className="muted">
+                เปิดเพจ → สร้างโพสต์ใหม่ด้วยข้อความและรูปด้านล่าง (เลือกโพสต์ในชื่อ <strong>เพจ</strong>) แล้วกลับมาติ๊กถูก — รูปแนบ {mediaIds.length} ใบต้องแนบทั้งหมดตามลำดับเดียวกัน
+              </p>
+              {[...selected].map((pageDbId) => {
+                const p = pages.data?.find((x) => x.id === pageDbId);
+                if (!p) return null;
+                const done = manualDone.has(pageDbId);
+                return (
+                  <div key={pageDbId} className="product-detail-row" style={{ opacity: done ? 0.45 : 1, alignItems: "center" }}>
+                    <input
+                      type="checkbox"
+                      checked={done}
+                      onChange={() => toggleManualDone(pageDbId)}
+                      style={{ width: 18, height: 18, flexShrink: 0 }}
+                    />
+                    {p.avatarUrl ? <img src={p.avatarUrl} alt="" /> : <span className="post-row-badge">เพจ</span>}
+                    <div style={{ flex: 1 }}>
+                      <div style={{ fontWeight: 600 }}>{p.name}</div>
+                      {body.trim() && <div className="muted">{body.trim().slice(0, 140)}</div>}
+                      <div style={{ display: "flex", gap: 4, marginTop: 4, flexWrap: "wrap" }}>
+                        {mediaIds.map((mid) => {
+                          const cm = byId.get(mid);
+                          return cm ? <img key={mid} src={cm.thumbnailUrl ?? cm.url} alt="" style={{ width: 44, height: 44, objectFit: "cover", borderRadius: 6 }} /> : null;
+                        })}
+                      </div>
+                    </div>
+                    <div style={{ display: "flex", flexDirection: "column", gap: 4, flexShrink: 0 }}>
+                      <button className="ghost" onClick={() => void openLink(`https://www.facebook.com/${p.pageId}`)}>เปิดเพจบน FB ↗</button>
+                      {body.trim() && (
+                        <button className="ghost" onClick={() => void navigator.clipboard.writeText(body.trim())}>คัดลอกข้อความ</button>
+                      )}
+                      {mediaIds.length > 0 && (
+                        <button className="ghost" onClick={() => void downloadAll()}>ดาวน์โหลดรูป {mediaIds.length} ใบ</button>
+                      )}
+                    </div>
+                  </div>
+                );
+              })}
+              {(detailComments.length > 0 || (useFirstComment && activeComments.length > 0)) && (
+                <p className="muted" style={{ marginTop: 8 }}>
+                  คอมเมนต์ใต้รูปสินค้า {commentCount} รายการยังไม่รวมในคิวนี้ — หลังโพสต์สำเร็จบน Facebook แล้ว ไปที่เมนู <strong>คอมเมนต์โพสต์เก่า</strong> เลือกเพจและโพสต์ที่เพิ่งสร้าง แล้วใช้ "เตรียมโพสต์เอง" เพื่อทำคอมเมนต์ต่อได้
+                </p>
+              )}
+            </div>
+          )}
+
           <div className="publish-bar">
             <div className="summary">
               <strong>{summary}</strong>
@@ -622,7 +741,9 @@ export default function Compose() {
               </div>
             </div>
             <div className="row" style={{ margin: 0, alignItems: "center" }}>
-
+              <button className="ghost" disabled={busy || !canManual} onClick={() => setManualMode(true)}>
+                เตรียมโพสต์เอง
+              </button>
               <button className="btn-primary" disabled={busy || !canPublish} onClick={publish}>
                 {busy ? "Publishing…" : "Publish"}
               </button>
