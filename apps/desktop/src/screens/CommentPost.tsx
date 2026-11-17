@@ -609,12 +609,14 @@ export default function CommentPost() {
                     : "ส่งทันที ทยอยตาม delay"}
             </div>
           </div>
-          <button className="ghost" disabled={busy || !canManual} onClick={() => setManualMode(true)}>
-            เตรียมโพสต์เอง
-          </button>
-          <button className="btn-primary" disabled={busy || !canSubmit} onClick={submit}>
-            {busy ? "กำลังส่ง…" : "ส่งคอมเมนต์"}
-          </button>
+          <div className="pb-actions">
+            <button className="ghost" disabled={busy || !canManual} onClick={() => setManualMode(true)}>
+              เตรียมโพสต์เอง
+            </button>
+            <button className="btn-primary" disabled={busy || !canSubmit} onClick={submit}>
+              {busy ? "กำลังส่ง…" : "ส่งคอมเมนต์"}
+            </button>
+          </div>
         </div>
       )}
     </>

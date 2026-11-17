@@ -740,7 +740,7 @@ export default function Compose() {
                         : "Publishes immediately"}
               </div>
             </div>
-            <div className="row" style={{ margin: 0, alignItems: "center" }}>
+            <div className="pb-actions">
               <button className="ghost" disabled={busy || !canManual} onClick={() => setManualMode(true)}>
                 เตรียมโพสต์เอง
               </button>

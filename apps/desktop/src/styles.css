@@ -207,6 +207,10 @@ h3, h4 { margin-bottom: 10px; }
 .publish-bar .btn-primary { padding: 12px 28px; font-size: 15px; }
 .publish-bar .summary { font-size: 14px; }
 .publish-bar .summary strong { color: var(--accent); }
+.publish-bar .pb-actions { display: flex; gap: 10px; align-items: center; flex-shrink: 0; }
+.publish-bar .pb-actions button { padding: 12px 22px; font-size: 15px; white-space: nowrap; }
+.publish-bar .pb-actions .ghost { border-color: #3b4a63; color: #c9d4e8; }
+.publish-bar .pb-actions .ghost:not(:disabled):hover { border-color: var(--accent); color: var(--accent); }
 
 /* post detail (History) */
 .post-detail { margin-top: 10px; border-top: 1px solid var(--border, #2a3346); padding-top: 10px; }
