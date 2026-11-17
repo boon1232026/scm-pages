@@ -3,6 +3,7 @@ import { Link } from "react-router-dom";
 import type { Comment, FbComment, FbFeedPost, FbPostPhoto, MediaAsset } from "@scm/contracts";
 import { api } from "../lib/api";
 import { uploadFilesFast } from "../lib/bulk-upload";
+import { submitCommentBatches } from "../lib/comment-batch";
 import { Err, fmtDate, StatusBadge, useQuery } from "../lib/hooks";
 
 type Row = { body: string; mediaIds: string[]; uploadError: string | null };
@@ -51,6 +52,8 @@ export default function CommentPost() {
   const [queue, setQueue] = useState<{ done: number; total: number } | null>(null);
   const fileRef = useRef<HTMLInputElement>(null);
   const fileTargetRef = useRef<string>(POST_ROW);
+  const submitKeyRef = useRef<string | null>(null);
+  const submitDraftRef = useRef<string | null>(null);
 
   const items = media.data?.items ?? [];
   const byId = new Map([...Object.entries(uploadedMedia), ...items.map((m) => [m.id, m] as const)]);
@@ -111,6 +114,8 @@ export default function CommentPost() {
     setFbComments(new Map());
     setRows({});
     setCreated(null);
+    submitKeyRef.current = null;
+    submitDraftRef.current = null;
     setError(null);
     void (async () => {
       setFeedLoading(true);
@@ -133,6 +138,8 @@ export default function CommentPost() {
     setSent([]);
     setFbComments(new Map());
     setCreated(null);
+    submitKeyRef.current = null;
+    submitDraftRef.current = null;
     setError(null);
     setPhotosLoading(true);
     try {
@@ -222,19 +229,29 @@ export default function CommentPost() {
   const canSubmit = !!pageId && !!post && comments.length > 0 && uploading === null && !pendingMedia;
 
   async function submit() {
+    const draft = JSON.stringify({ comments, delay });
+    if (submitDraftRef.current && submitDraftRef.current !== draft) {
+      setError("รายการเปลี่ยนหลังส่งบางส่วน กรุณาตรวจ History ก่อนเริ่มส่งชุดใหม่ เพื่อป้องกันคอมเมนต์ซ้ำ");
+      return;
+    }
+    submitDraftRef.current = draft;
+    submitKeyRef.current ??= crypto.randomUUID();
     setBusy(true);
     setError(null);
+    let queued = 0;
     try {
-      const res = await api.createCommentBatch({
-        comments,
-        staggerSeconds: delay,
-        idempotencyKey: crypto.randomUUID(),
+      const total = await submitCommentBatches(comments, delay, submitKeyRef.current, (count) => {
+        queued = count;
+        setCreated(count);
       });
-      setCreated(res.created);
+      setCreated(total);
       setRows({});
+      submitKeyRef.current = null;
+      submitDraftRef.current = null;
       if (post) void loadSent(post.id);
     } catch (e) {
-      setError(e instanceof Error ? e.message : String(e));
+      const message = e instanceof Error ? e.message : String(e);
+      setError(queued ? `เข้าคิวแล้ว ${queued}/${comments.length} รายการ: ${message} — กดส่งอีกครั้งเพื่อทำรายการที่เหลือ (อย่าแก้ร่างระหว่างนี้)` : message);
     } finally {
       setBusy(false);
     }

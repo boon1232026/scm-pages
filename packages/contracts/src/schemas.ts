@@ -303,6 +303,7 @@ export const createCommentBatchSchema = z.object({
     .min(1)
     .max(500),
   staggerSeconds: z.number().int().min(0).max(3600).default(0),
+  startIndex: z.number().int().min(0).default(0),
   idempotencyKey: z.string().min(8).max(120).optional(),
 });
 export type CreateCommentBatchInput = z.infer<typeof createCommentBatchSchema>;

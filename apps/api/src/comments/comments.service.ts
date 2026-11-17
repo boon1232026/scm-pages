@@ -91,9 +91,13 @@ export class CommentsService {
    */
   async createBatch(workspaceId: string, userId: string, input: CreateCommentBatchInput) {
     const stagger = input.staggerSeconds ?? 0;
+    const startIndex = input.startIndex ?? 0;
+    const startedAt = Date.now();
     let created = 0;
     for (const [i, c] of input.comments.entries()) {
-      const scheduledAt = i * stagger > 0 ? new Date(Date.now() + i * stagger * 1000).toISOString() : undefined;
+      const delaySeconds = (startIndex + i) * stagger;
+      const scheduledAt = delaySeconds > 0
+        ? new Date(startedAt + delaySeconds * 1000).toISOString() : undefined;
       await this.create(workspaceId, userId, {
         ...c,
         ...(scheduledAt ? { scheduledAt } : {}),
