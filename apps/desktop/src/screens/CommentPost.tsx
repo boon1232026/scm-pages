@@ -1,11 +1,9 @@
 import { useEffect, useRef, useState } from "react";
 import { Link } from "react-router-dom";
-import { openUrl } from "@tauri-apps/plugin-opener";
 import type { Comment, FbComment, FbFeedPost, FbPostPhoto, MediaAsset } from "@scm/contracts";
 import { api } from "../lib/api";
 import { uploadFilesFast } from "../lib/bulk-upload";
 import { submitCommentBatches } from "../lib/comment-batch";
-import { copyImageToClipboard } from "../lib/clipboard-image";
 import { Err, fmtDate, StatusBadge, useQuery } from "../lib/hooks";
 
 type Row = { body: string; mediaIds: string[]; uploadError: string | null };
@@ -52,8 +50,6 @@ export default function CommentPost() {
   const [uploadedMedia, setUploadedMedia] = useState<Record<string, MediaAsset>>({});
   const [dragOver, setDragOver] = useState<string | null>(null);
   const [queue, setQueue] = useState<{ done: number; total: number } | null>(null);
-  const [manualMode, setManualMode] = useState(false);
-  const [manualDone, setManualDone] = useState<Set<number>>(new Set());
   const fileRef = useRef<HTMLInputElement>(null);
   const fileTargetRef = useRef<string>(POST_ROW);
   const submitKeyRef = useRef<string | null>(null);
@@ -118,7 +114,6 @@ export default function CommentPost() {
     setFbComments(new Map());
     setRows({});
     setCreated(null);
-    setManualMode(false);
     submitKeyRef.current = null;
     submitDraftRef.current = null;
     setError(null);
@@ -143,7 +138,6 @@ export default function CommentPost() {
     setSent([]);
     setFbComments(new Map());
     setCreated(null);
-    setManualMode(false);
     submitKeyRef.current = null;
     submitDraftRef.current = null;
     setError(null);
@@ -233,62 +227,6 @@ export default function CommentPost() {
     .flatMap((r) => r.mediaIds)
     .some((id) => byId.get(id)?.status !== "ready");
   const canSubmit = !!pageId && !!post && comments.length > 0 && uploading === null && !pendingMedia;
-  const canManual = !!pageId && !!post && uploading === null;
-
-  // ---- Manual posting queue: prepare everything, a person posts on Facebook by hand.
-  const labelByTarget = new Map(commentItems.map((c) => [c.fbTargetId, c.label]));
-  const photoByTarget = new Map((photos ?? []).map((p) => [p.fbPhotoId, p]));
-  const manualKey = post && pageId ? `scm.manual.${pageId}.${post.id}` : null;
-
-  useEffect(() => {
-    if (!manualKey) return;
-    try {
-      const saved = JSON.parse(localStorage.getItem(manualKey) ?? "[]") as number[];
-      setManualDone(new Set(saved));
-    } catch {
-      setManualDone(new Set());
-    }
-  }, [manualKey]);
-
-  function toggleManualDone(index: number) {
-    setManualDone((cur) => {
-      const next = new Set(cur);
-      if (next.has(index)) next.delete(index);
-      else next.add(index);
-      if (manualKey) localStorage.setItem(manualKey, JSON.stringify([...next]));
-      return next;
-    });
-  }
-
-  function targetUrl(fbTargetId: string): string {
-    if (post && fbTargetId === post.id) {
-      const [pg, pid] = post.id.split("_");
-      return `https://www.facebook.com/${pg}/posts/${pid}`;
-    }
-    return `https://www.facebook.com/photo/?fbid=${fbTargetId}`;
-  }
-
-  async function openLink(url: string) {
-    try {
-      await openUrl(url);
-    } catch {
-      window.open(url, "_blank");
-    }
-  }
-
-  async function downloadMedia(asset: MediaAsset) {
-    try {
-      const blob = await (await fetch(asset.url)).blob();
-      const href = URL.createObjectURL(blob);
-      const a = document.createElement("a");
-      a.href = href;
-      a.download = asset.name || `${asset.id}.jpg`;
-      a.click();
-      URL.revokeObjectURL(href);
-    } catch {
-      void openLink(asset.url);
-    }
-  }
 
   async function submit() {
     const draft = JSON.stringify({ comments, delay });
@@ -538,88 +476,6 @@ export default function CommentPost() {
         </div>
       )}
 
-      {manualMode && post && (
-        <div className="card">
-          <div className="sec-head">
-            <h3>คิวโพสต์เอง — คอมเมนต์บน Facebook ด้วยตัวเองทีละรายการ</h3>
-            <span className="muted" style={{ marginLeft: "auto" }}>ทำแล้ว {manualDone.size}/{comments.length}</span>
-            <button
-              className="link"
-              onClick={() => {
-                const all = manualDone.size === comments.length;
-                const next: Set<number> = all ? new Set() : new Set(comments.map((_, i) => i));
-                setManualDone(next);
-                if (manualKey) localStorage.setItem(manualKey, JSON.stringify([...next]));
-              }}
-            >
-              {manualDone.size === comments.length ? "เอาออกทั้งหมด" : "ติ๊กทั้งหมด"}
-            </button>
-            <button
-              className="link"
-              onClick={() => {
-                setManualDone(new Set());
-                if (manualKey) localStorage.removeItem(manualKey);
-              }}
-            >
-              ล้างเครื่องหมาย
-            </button>
-            <button className="link" onClick={() => setManualMode(false)}>ปิด</button>
-          </div>
-          <p className="muted">
-            กด "เปิด FB + คัดลอกข้อความ" แล้วกด "คัดลอกรูป" — บน Facebook แค่ <strong>Ctrl+V วางข้อความ → Ctrl+V วางรูป → Enter</strong> เลือกโพสต์ในชื่อ <strong>เพจ</strong> ให้เหมือนที่ระบบจะส่ง แล้วกลับมาติ๊กถูก
-          </p>
-          {comments.length === 0 && (
-            <p className="muted">คิวยังว่าง — พิมพ์ข้อความหรือแนบรูปใต้ "โพสต์หลัก / รูปสินค้า" ด้านบนอย่างน้อย 1 จุด แล้วรายการจะขึ้นที่นี่ให้ทำตาม</p>
-          )}
-          {comments.map((c, i) => {
-            const done = manualDone.has(i);
-            const ph = photoByTarget.get(c.fbTargetId);
-            const cm = c.mediaId ? byId.get(c.mediaId) : null;
-            return (
-              <div key={i} className="product-detail-row" style={{ opacity: done ? 0.45 : 1, alignItems: "center" }}>
-                <input
-                  type="checkbox"
-                  checked={done}
-                  onChange={() => toggleManualDone(i)}
-                  style={{ width: 18, height: 18, flexShrink: 0 }}
-                />
-                {ph?.imageUrl ? <img src={ph.imageUrl} alt="" /> : <span className="post-row-badge">โพสต์</span>}
-                <div style={{ flex: 1 }}>
-                  <div style={{ fontWeight: 600 }}>#{i + 1} · {labelByTarget.get(c.fbTargetId)}</div>
-                  {c.body && <div className="muted">{c.body.slice(0, 140)}</div>}
-                  {cm && (
-                    <img
-                      src={cm.thumbnailUrl ?? cm.url}
-                      alt=""
-                      style={{ width: 56, height: 56, objectFit: "cover", borderRadius: 6, marginTop: 4 }}
-                    />
-                  )}
-                </div>
-                <div style={{ display: "flex", flexDirection: "column", gap: 4, flexShrink: 0 }}>
-                  <button
-                    className="ghost"
-                    onClick={() => {
-                      if (c.body) void navigator.clipboard.writeText(c.body);
-                      void openLink(targetUrl(c.fbTargetId));
-                    }}
-                  >
-                    เปิด FB + คัดลอกข้อความ ↗
-                  </button>
-                  {cm && (
-                    <button
-                      className="ghost"
-                      onClick={() => void copyImageToClipboard(cm.url).then((ok) => { if (!ok) return downloadMedia(cm); })}
-                    >
-                      คัดลอกรูป
-                    </button>
-                  )}
-                </div>
-              </div>
-            );
-          })}
-        </div>
-      )}
-
       {post && (
         <div className="publish-bar">
           <div className="summary">
@@ -635,9 +491,6 @@ export default function CommentPost() {
             </div>
           </div>
           <div className="pb-actions">
-            <button className="ghost" disabled={busy || !canManual} onClick={() => setManualMode(true)}>
-              เตรียมโพสต์เอง
-            </button>
             <button className="btn-primary" disabled={busy || !canSubmit} onClick={submit}>
               {busy ? "กำลังส่ง…" : "ส่งคอมเมนต์"}
             </button>
