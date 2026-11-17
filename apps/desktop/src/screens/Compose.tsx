@@ -202,7 +202,7 @@ export default function Compose() {
 
   // ---- Manual mode: prepare post content; a person publishes on Facebook by hand.
   const manualSig = `${body.trim()}|${mediaIds.join(",")}`;
-  const canManual = selected.size > 0 && (body.trim().length > 0 || mediaIds.length > 0) && uploading === null && !batchActive;
+  const canManual = selected.size > 0 && uploading === null && !batchActive;
   const MANUAL_LS = "scm.manual.compose";
 
   function manualDoneMap(): Record<string, string> {
