@@ -545,6 +545,17 @@ export default function CommentPost() {
             <button
               className="link"
               onClick={() => {
+                const all = manualDone.size === comments.length;
+                const next: Set<number> = all ? new Set() : new Set(comments.map((_, i) => i));
+                setManualDone(next);
+                if (manualKey) localStorage.setItem(manualKey, JSON.stringify([...next]));
+              }}
+            >
+              {manualDone.size === comments.length ? "เอาออกทั้งหมด" : "ติ๊กทั้งหมด"}
+            </button>
+            <button
+              className="link"
+              onClick={() => {
                 setManualDone(new Set());
                 if (manualKey) localStorage.removeItem(manualKey);
               }}

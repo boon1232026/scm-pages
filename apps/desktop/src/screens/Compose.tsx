@@ -677,6 +677,24 @@ export default function Compose() {
               <div className="sec-head">
                 <h3>คิวโพสต์เอง — สร้างโพสต์บน Facebook ด้วยตัวเองทีละเพจ</h3>
                 <span className="muted" style={{ marginLeft: "auto" }}>ทำแล้ว {manualDone.size}/{selected.size}</span>
+                <button
+                  className="link"
+                  onClick={() => {
+                    const all = manualDone.size === selected.size;
+                    const saved = manualDoneMap();
+                    if (all) {
+                      setManualDone(new Set());
+                      for (const id of selected) delete saved[id];
+                    } else {
+                      const next = new Set(selected);
+                      setManualDone(next);
+                      for (const id of selected) saved[id] = manualSig;
+                    }
+                    localStorage.setItem(MANUAL_LS, JSON.stringify(saved));
+                  }}
+                >
+                  {manualDone.size === selected.size ? "เอาออกทั้งหมด" : "ติ๊กทั้งหมด"}
+                </button>
                 <button className="link" onClick={() => setManualMode(false)}>ปิด</button>
               </div>
               <p className="muted">
