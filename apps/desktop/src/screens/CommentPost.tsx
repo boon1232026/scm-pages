@@ -232,7 +232,7 @@ export default function CommentPost() {
     .flatMap((r) => r.mediaIds)
     .some((id) => byId.get(id)?.status !== "ready");
   const canSubmit = !!pageId && !!post && comments.length > 0 && uploading === null && !pendingMedia;
-  const canManual = !!pageId && !!post && comments.length > 0 && uploading === null;
+  const canManual = !!pageId && !!post && uploading === null;
 
   // ---- Manual posting queue: prepare everything, a person posts on Facebook by hand.
   const labelByTarget = new Map(commentItems.map((c) => [c.fbTargetId, c.label]));
@@ -556,6 +556,9 @@ export default function CommentPost() {
           <p className="muted">
             กด "เปิดเป้าหมาย" เพื่อไปคอมเมนต์บน Facebook เอง — ในช่องคอมเมนต์เลือกโพสต์ในชื่อ <strong>เพจ</strong> ให้เหมือนที่ระบบจะส่ง แล้วกลับมาติ๊กถูก
           </p>
+          {comments.length === 0 && (
+            <p className="muted">คิวยังว่าง — พิมพ์ข้อความหรือแนบรูปใต้ "โพสต์หลัก / รูปสินค้า" ด้านบนอย่างน้อย 1 จุด แล้วรายการจะขึ้นที่นี่ให้ทำตาม</p>
+          )}
           {comments.map((c, i) => {
             const done = manualDone.has(i);
             const ph = photoByTarget.get(c.fbTargetId);
